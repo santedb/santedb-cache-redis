@@ -1,10 +1,12 @@
 ﻿using SanteDB.Caching.Redis.Configuration;
 using SanteDB.Core;
+using SanteDB.Core.Diagnostics;
 using SanteDB.Core.Services;
 using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -30,6 +32,7 @@ namespace SanteDB.Caching.Redis
         private ISubscriber m_subscriber;
         // Configuration section
         private RedisConfigurationSection m_configuration = ApplicationServiceContext.Current.GetService<IConfigurationManager>().GetSection<RedisConfigurationSection>();
+        private Tracer m_tracer = Tracer.GetTracer(typeof(RedisConnectionManager));
 
         /// <summary>
         /// Ctor for singleton
@@ -38,10 +41,21 @@ namespace SanteDB.Caching.Redis
         {
             var configuration = new ConfigurationOptions()
             {
-                Password = this.m_configuration.Password
+                Password = this.m_configuration.Password,
+                ResolveDns = true
             };
+
             foreach (var itm in this.m_configuration.Servers)
-                configuration.EndPoints.Add(itm);
+            {
+                var epData = itm.Split(':');
+                if(!IPAddress.TryParse(epData[0], out IPAddress addr)) // hack for MONO in Docker
+                {
+                    var address = Dns.Resolve(epData[0]);
+                    epData[0] = address.AddressList.First().ToString();
+                }
+                this.m_tracer.TraceInfo("Adding {0}:{1}", epData[0], epData[1]);
+                configuration.EndPoints.Add(epData[0], int.Parse(epData[1]));
+            }
 
             this.m_connection = ConnectionMultiplexer.Connect(configuration);
             this.m_subscriber = this.m_connection.GetSubscriber();

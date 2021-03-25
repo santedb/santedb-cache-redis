@@ -122,7 +122,7 @@ namespace SanteDB.Caching.Redis
             {
                 this.Starting?.Invoke(this, EventArgs.Empty);
 
-                this.m_tracer.TraceInfo("Starting REDIS ad-cache service to hosts {0}...", String.Join(";", this.m_configuration.Servers));
+                this.m_tracer.TraceInfo("Starting REDIS ad-hoc cache service to hosts {0}...", String.Join(";", this.m_configuration.Servers));
                 this.m_tracer.TraceInfo("Using shared REDIS cache {0}", RedisConnectionManager.Current.Connection);
 
                 this.Started?.Invoke(this, EventArgs.Empty);

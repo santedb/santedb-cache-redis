@@ -7,18 +7,19 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Xml;
 
 namespace SanteDB.Caching.Redis.Docker
 {
     /// <summary>
     /// Caching feature
     /// </summary>
-    public class RedisCachingFeature : IDockerFeature
+    public class RedisCachingDockerFeature : IDockerFeature
     {
 
 
-        public const string MaxAgeSetting = "EXPIRE";
-        public const string RedisAddressSetting = "REDIS_SERVER";
+        public const string MaxAgeSetting = "TTL";
+        public const string RedisAddressSetting = "SERVER";
 
         /// <summary>
         /// Get the id of this feature
@@ -46,7 +47,7 @@ namespace SanteDB.Caching.Redis.Docker
 
             if (!settings.TryGetValue(MaxAgeSetting, out string maxAge))
             {
-                maxAge = "PT1H";
+                maxAge = "0.1:0:0";
             }
 
             // Parse
@@ -59,10 +60,14 @@ namespace SanteDB.Caching.Redis.Docker
             var redisSetting = configuration.GetSection<RedisConfigurationSection>();
             if (redisSetting == null)
             {
-                redisSetting = DockerFeatureUtils.LoadConfigurationResource<RedisConfigurationSection>("SanteDB.Caching.Redis.Docker.RedisCacheFeature.xml");
+                redisSetting = new RedisConfigurationSection()
+                {
+                    PublishChanges = false,
+                    Servers=new List<string>() {  "127.0.0.1:6379" }
+                };
                 configuration.AddSection(redisSetting);
             }
-            redisSetting.TTLXml = maxAgeTs.ToString();
+            redisSetting.TTLXml = XmlConvert.ToString(maxAgeTs);
 
             if (settings.TryGetValue(RedisAddressSetting, out string redisServer))
             {
