@@ -25,6 +25,7 @@ using SanteDB.Core.Model.Acts;
 using SanteDB.Core.Model.Attributes;
 using SanteDB.Core.Model.Constants;
 using SanteDB.Core.Model.Entities;
+using SanteDB.Core.Model.Interfaces;
 using SanteDB.Core.Model.Serialization;
 using SanteDB.Core.Services;
 using StackExchange.Redis;
@@ -133,27 +134,30 @@ namespace SanteDB.Caching.Redis
         /// <summary>
         /// Ensure cache consistency
         /// </summary>
-        private void EnsureCacheConsistency(DataCacheEventArgs e, bool remove = false)
+        private void EnsureCacheConsistency(DataCacheEventArgs e, bool skipMe = false)
         {
             // If someone inserts a relationship directly, we need to unload both the source and target so they are re-loaded 
-            if (remove)
+            if (e.Object is ActParticipation ptcpt)
             {
-                if (e.Object is ActParticipation ptcpt)
-                {
-                    this.Remove(ptcpt.SourceEntityKey.GetValueOrDefault());
-                    this.Remove(ptcpt.PlayerEntityKey.GetValueOrDefault());
-                    //MemoryCache.Current.RemoveObject(ptcpt.PlayerEntity?.GetType() ?? typeof(Entity), ptcpt.PlayerEntityKey);
-                }
-                else if (e.Object is ActRelationship actrel)
-                {
-                    this.Remove(actrel.SourceEntityKey.GetValueOrDefault());
-                    this.Remove(actrel.TargetActKey.GetValueOrDefault());
-                }
-                else if (e.Object is EntityRelationship entrel)
-                {
-                    this.Remove(entrel.SourceEntityKey.GetValueOrDefault());
-                    this.Remove(entrel.TargetEntityKey.GetValueOrDefault());
-                }
+                this.Remove(ptcpt.SourceEntityKey.GetValueOrDefault());
+                this.Remove(ptcpt.PlayerEntityKey.GetValueOrDefault());
+                //MemoryCache.Current.RemoveObject(ptcpt.PlayerEntity?.GetType() ?? typeof(Entity), ptcpt.PlayerEntityKey);
+            }
+            else if (e.Object is ActRelationship actrel)
+            {
+                this.Remove(actrel.SourceEntityKey.GetValueOrDefault());
+                this.Remove(actrel.TargetActKey.GetValueOrDefault());
+            }
+            else if (e.Object is EntityRelationship entrel)
+            {
+                this.Remove(entrel.SourceEntityKey.GetValueOrDefault());
+                this.Remove(entrel.TargetEntityKey.GetValueOrDefault());
+            }
+            else if (e.Object is IHasRelationships irel && e.Object is IIdentifiedEntity idi && !skipMe)
+            {
+                // Remove all sources of my relationships where I am the target 
+                irel.Relationships.Where(o => o.TargetEntityKey == idi.Key).ToList().ForEach(o => this.Remove(o.SourceEntityKey.GetValueOrDefault()));
+
             }
         }
 
@@ -185,7 +189,7 @@ namespace SanteDB.Caching.Redis
                 // Add
 
                 var redisDb = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.CacheDatabaseId);
-                
+
                 redisDb.HashSet(data.Key.Value.ToString(), this.SerializeObject(data), CommandFlags.FireAndForget);
                 redisDb.KeyExpire(data.Key.Value.ToString(), this.m_configuration.TTL, CommandFlags.FireAndForget);
 
@@ -278,7 +282,7 @@ namespace SanteDB.Caching.Redis
                     this.m_nonCached.Add(itm);
 
                 // Subscribe to SanteDB events
-                if(this.m_configuration.PublishChanges)
+                if (this.m_configuration.PublishChanges)
                     RedisConnectionManager.Current.Subscriber.Subscribe("oiz.events", (channel, message) =>
                     {
 
@@ -337,7 +341,7 @@ namespace SanteDB.Caching.Redis
             {
                 RedisConnectionManager.Current.Connection.GetServer(this.m_configuration.Servers.First()).FlushAllDatabases();
             }
-            catch(Exception e)
+            catch (Exception e)
             {
                 this.m_tracer.TraceWarning("Could not flush REDIS cache: {0}", e);
             }
