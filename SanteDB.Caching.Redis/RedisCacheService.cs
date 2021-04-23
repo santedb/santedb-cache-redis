@@ -34,6 +34,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
 using System.Xml.Serialization;
@@ -46,6 +47,10 @@ namespace SanteDB.Caching.Redis
     [ServiceProvider("REDIS Data Caching Service", Configuration = typeof(RedisConfigurationSection))]
     public class RedisCacheService : IDataCachingService, IDaemonService
     {
+
+        private const string FIELD_VALUE = "value";
+        private const string FIELD_STATE = "state";
+        private const string FIELD_TYPE = "type";
 
         /// <summary>
         /// Gets the service name
@@ -63,6 +68,9 @@ namespace SanteDB.Caching.Redis
 
         // Non cached types
         private HashSet<Type> m_nonCached = new HashSet<Type>();
+
+        // REDIS sometimes does not like concurrent connections on the multiplexor
+        private object m_lockObject = new object();
 
         /// <summary>
         /// Is the service running 
@@ -98,12 +106,14 @@ namespace SanteDB.Caching.Redis
         {
             XmlSerializer xsz = XmlModelSerializerFactory.Current.CreateSerializer(data.GetType());
             HashEntry[] retVal = new HashEntry[3];
-            retVal[0] = new HashEntry("type", data.GetType().AssemblyQualifiedName);
-            retVal[1] = new HashEntry("loadState", (int)data.LoadState);
-            using (var sw = new StringWriter())
+            retVal[0] = new HashEntry(FIELD_TYPE, data.GetType().AssemblyQualifiedName);
+            retVal[1] = new HashEntry(FIELD_STATE, (int)data.LoadState);
+
+            using (var ms = new MemoryStream())
             {
-                xsz.Serialize(sw, data);
-                retVal[2] = new HashEntry("value", sw.ToString());
+                using(var gzs = new GZipStream(ms, CompressionLevel.Fastest))
+                    xsz.Serialize(gzs, data);
+                retVal[2] = new HashEntry(FIELD_VALUE, ms.ToArray());
             }
             return retVal;
         }
@@ -111,22 +121,24 @@ namespace SanteDB.Caching.Redis
         /// <summary>
         /// Serialize objects
         /// </summary>
-        private IdentifiedData DeserializeObject(HashEntry[] data)
+        private IdentifiedData DeserializeObject(RedisValue rvType, RedisValue rvState, RedisValue rvValue)
         {
 
-            if (data == null || data.Length == 0) return null;
+            if (!rvValue.HasValue|| !rvType.HasValue) return null;
 
-            Type type = Type.GetType(data.FirstOrDefault(o => o.Name == "type").Value);
-            LoadState ls = (LoadState)(int)data.FirstOrDefault(o => o.Name == "loadState").Value;
-            String value = data.FirstOrDefault(o => o.Name == "value").Value;
+            Type type = Type.GetType((String)rvType);
+            LoadState ls = (LoadState)(int)rvState;
 
             // Find serializer
             XmlSerializer xsz = XmlModelSerializerFactory.Current.CreateSerializer(type);
-            using (var sr = new StringReader(value))
+            using (var sr = new MemoryStream((byte[])rvValue))
             {
-                var retVal = xsz.Deserialize(sr) as IdentifiedData;
-                retVal.LoadState = ls;
-                return retVal;
+                using (var gzs = new GZipStream(sr, CompressionMode.Decompress))
+                {
+                    var retVal = xsz.Deserialize(gzs) as IdentifiedData;
+                    retVal.LoadState = ls;
+                    return retVal;
+                }
             }
 
         }
@@ -228,11 +240,16 @@ namespace SanteDB.Caching.Redis
                 // Add
                 var redisDb = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.CacheDatabaseId);
                 redisDb.KeyExpire(key.ToString(), this.m_configuration.TTL, CommandFlags.FireAndForget);
-                return this.DeserializeObject(redisDb.HashGetAll(key.ToString()));
+                var hdata = redisDb.HashGetAll(key.ToString()).ToDictionary(o=>(String)o.Name, o=>o.Value);
+                if (hdata.Count == 0)
+                    return null;
+                return this.DeserializeObject(hdata[FIELD_TYPE], hdata[FIELD_STATE],hdata[FIELD_VALUE]);
             }
             catch (Exception e)
             {
                 this.m_tracer.TraceWarning("REDIS CACHE ERROR (FETCHING SKIPPED): {0}", e);
+                RedisConnectionManager.Current.Dispose();
+
                 return null;
             }
 

@@ -42,7 +42,13 @@ namespace SanteDB.Caching.Redis
             var configuration = new ConfigurationOptions()
             {
                 Password = this.m_configuration.Password,
-                ResolveDns = true
+                ConnectTimeout = 1000,
+                ConnectRetry = 2,
+                ResponseTimeout = 1000,
+                SyncTimeout = 2000,
+                Ssl =false,
+                WriteBuffer= 10240
+                
             };
 
             foreach (var itm in this.m_configuration.Servers)
@@ -91,7 +97,12 @@ namespace SanteDB.Caching.Redis
         /// </summary>
         public void Dispose()
         {
-            this.m_connection.Dispose();
+            lock (m_lock)
+            {
+                this.m_connection?.Dispose();
+                this.m_connection = null;
+                m_current = null;
+            }
         }
     }
 }
