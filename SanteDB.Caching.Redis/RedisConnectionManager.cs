@@ -54,11 +54,6 @@ namespace SanteDB.Caching.Redis
             foreach (var itm in this.m_configuration.Servers)
             {
                 var epData = itm.Split(':');
-                if(!IPAddress.TryParse(epData[0], out IPAddress addr)) // hack for MONO in Docker
-                {
-                    var address = Dns.Resolve(epData[0]);
-                    epData[0] = address.AddressList.First().ToString();
-                }
                 this.m_tracer.TraceInfo("Adding {0}:{1}", epData[0], epData[1]);
                 configuration.EndPoints.Add(epData[0], int.Parse(epData[1]));
             }
