@@ -104,6 +104,14 @@ namespace SanteDB.Caching.Redis
         /// </summary>
         private HashEntry[] SerializeObject(IdentifiedData data)
         {
+            // HACK: Remove all non-transient tags since the persistence layer doesn't persist them
+            if(data is ITaggable taggable)
+            {
+                foreach(var tag in taggable.Tags.Where(o=>o.TagKey.StartsWith("$")).ToArray())
+                {
+                    taggable.RemoveTag(tag.TagKey);
+                }
+            }
             XmlSerializer xsz = XmlModelSerializerFactory.Current.CreateSerializer(data.GetType());
             HashEntry[] retVal = new HashEntry[3];
             retVal[0] = new HashEntry(FIELD_TYPE, data.GetType().AssemblyQualifiedName);
