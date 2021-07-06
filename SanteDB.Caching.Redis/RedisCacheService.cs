@@ -143,35 +143,35 @@ namespace SanteDB.Caching.Redis
 
         }
 
-        /// <summary>
-        /// Ensure cache consistency
-        /// </summary>
-        private void EnsureCacheConsistency(DataCacheEventArgs e, bool skipMe = false)
-        {
-            // If someone inserts a relationship directly, we need to unload both the source and target so they are re-loaded 
-            if (e.Object is ActParticipation ptcpt)
-            {
-                this.Remove(ptcpt.SourceEntityKey.GetValueOrDefault());
-                this.Remove(ptcpt.PlayerEntityKey.GetValueOrDefault());
-                //MemoryCache.Current.RemoveObject(ptcpt.PlayerEntity?.GetType() ?? typeof(Entity), ptcpt.PlayerEntityKey);
-            }
-            else if (e.Object is ActRelationship actrel)
-            {
-                this.Remove(actrel.SourceEntityKey.GetValueOrDefault());
-                this.Remove(actrel.TargetActKey.GetValueOrDefault());
-            }
-            else if (e.Object is EntityRelationship entrel)
-            {
-                this.Remove(entrel.SourceEntityKey.GetValueOrDefault());
-                this.Remove(entrel.TargetEntityKey.GetValueOrDefault());
-            }
-            else if (e.Object is IHasRelationships irel && e.Object is IIdentifiedEntity idi && !skipMe)
-            {
-                // Remove all sources of my relationships where I am the target 
-                irel.Relationships.Where(o => o.TargetEntityKey == idi.Key).ToList().ForEach(o => this.Remove(o.SourceEntityKey.GetValueOrDefault()));
+        ///// <summary>
+        ///// Ensure cache consistency
+        ///// </summary>
+        //private void EnsureCacheConsistency(DataCacheEventArgs e, bool skipMe = false)
+        //{
+        //    // If someone inserts a relationship directly, we need to unload both the source and target so they are re-loaded 
+        //    if (e.Object is ActParticipation ptcpt)
+        //    {
+        //        this.Remove(ptcpt.SourceEntityKey.GetValueOrDefault());
+        //        this.Remove(ptcpt.PlayerEntityKey.GetValueOrDefault());
+        //        //MemoryCache.Current.RemoveObject(ptcpt.PlayerEntity?.GetType() ?? typeof(Entity), ptcpt.PlayerEntityKey);
+        //    }
+        //    else if (e.Object is ActRelationship actrel)
+        //    {
+        //        this.Remove(actrel.SourceEntityKey.GetValueOrDefault());
+        //        this.Remove(actrel.TargetActKey.GetValueOrDefault());
+        //    }
+        //    else if (e.Object is EntityRelationship entrel)
+        //    {
+        //        this.Remove(entrel.SourceEntityKey.GetValueOrDefault());
+        //        this.Remove(entrel.TargetEntityKey.GetValueOrDefault());
+        //    }
+        //    else if (e.Object is IHasRelationships irel && e.Object is IIdentifiedEntity idi && !skipMe)
+        //    {
+        //        // Remove all sources of my relationships where I am the target 
+        //        irel.Relationships.Where(o => o.TargetEntityKey == idi.Key).ToList().ForEach(o => this.Remove(o.SourceEntityKey.GetValueOrDefault()));
 
-            }
-        }
+        //    }
+        //}
 
         /// <summary>
         /// Add an object to the REDIS cache
@@ -205,7 +205,7 @@ namespace SanteDB.Caching.Redis
                 redisDb.HashSet(data.Key.Value.ToString(), this.SerializeObject(data), CommandFlags.FireAndForget);
                 redisDb.KeyExpire(data.Key.Value.ToString(), this.m_configuration.TTL, CommandFlags.FireAndForget);
 
-                this.EnsureCacheConsistency(new DataCacheEventArgs(data));
+                //this.EnsureCacheConsistency(new DataCacheEventArgs(data));
                 if (this.m_configuration.PublishChanges)
                 {
                     var existing = redisDb.KeyExists(data.Key.Value.ToString());
@@ -278,7 +278,7 @@ namespace SanteDB.Caching.Redis
             var existing = this.GetCacheItem(key);
             var redisDb = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.CacheDatabaseId);
             redisDb.KeyDelete(key.ToString(), CommandFlags.FireAndForget);
-            this.EnsureCacheConsistency(new DataCacheEventArgs(existing), true);
+            //this.EnsureCacheConsistency(new DataCacheEventArgs(existing), true);
 
             RedisConnectionManager.Current.Connection.GetSubscriber().Publish("oiz.events", $"DELETE http://{Environment.MachineName}/cache/{key}");
         }
