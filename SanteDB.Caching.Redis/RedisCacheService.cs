@@ -112,6 +112,7 @@ namespace SanteDB.Caching.Redis
                     taggable.RemoveTag(tag.TagKey);
                 }
             }
+            data.BatchOperation = Core.Model.DataTypes.BatchOperationType.Auto;
             XmlSerializer xsz = XmlModelSerializerFactory.Current.CreateSerializer(data.GetType());
             HashEntry[] retVal = new HashEntry[3];
             retVal[0] = new HashEntry(FIELD_TYPE, data.GetType().AssemblyQualifiedName);
