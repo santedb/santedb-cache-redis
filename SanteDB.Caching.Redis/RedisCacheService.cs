@@ -104,14 +104,7 @@ namespace SanteDB.Caching.Redis
         /// </summary>
         private HashEntry[] SerializeObject(IdentifiedData data)
         {
-            // HACK: Remove all non-transient tags since the persistence layer doesn't persist them
-            if(data is ITaggable taggable)
-            {
-                foreach(var tag in taggable.Tags.Where(o=>o.TagKey.StartsWith("$")).ToArray())
-                {
-                    taggable.RemoveTag(tag.TagKey);
-                }
-            }
+            
             data.BatchOperation = Core.Model.DataTypes.BatchOperationType.Auto;
             XmlSerializer xsz = XmlModelSerializerFactory.Current.CreateSerializer(data.GetType());
             HashEntry[] retVal = new HashEntry[3];
@@ -204,6 +197,21 @@ namespace SanteDB.Caching.Redis
                     return;
                 }
 
+                // HACK: Remove all non-transient tags since the persistence layer doesn't persist them
+                if (data is ITaggable taggable)
+                {
+                    // TODO: Put this as a constant
+                    // Don't cache generated data
+                    if (taggable.GetTag("$generated") == "true")
+                    {
+                        return;
+                    }
+
+                    foreach (var tag in taggable.Tags.Where(o => o.TagKey.StartsWith("$")).ToArray())
+                    {
+                        taggable.RemoveTag(tag.TagKey);
+                    }
+                }
                 // Only add data which is an entity, act, or relationship
                 //if (data is Act || data is Entity || data is ActRelationship || data is ActParticipation || data is EntityRelationship || data is Concept)
                 //{
@@ -213,6 +221,17 @@ namespace SanteDB.Caching.Redis
 
                 redisDb.HashSet(data.Key.Value.ToString(), this.SerializeObject(data), CommandFlags.FireAndForget);
                 redisDb.KeyExpire(data.Key.Value.ToString(), this.m_configuration.TTL, CommandFlags.FireAndForget);
+
+                // If this is a relationship class we remove the source entity from the cache
+                if (data is ITargetedAssociation targetedAssociation)
+                {
+                    this.Remove(targetedAssociation.SourceEntityKey.GetValueOrDefault());
+                    this.Remove(targetedAssociation.TargetEntityKey.GetValueOrDefault());
+                }
+                else if (data is ISimpleAssociation simpleAssociation)
+                {
+                    this.Remove(simpleAssociation.SourceEntityKey.GetValueOrDefault());
+                }
 
                 //this.EnsureCacheConsistency(new DataCacheEventArgs(data));
                 if (this.m_configuration.PublishChanges)
