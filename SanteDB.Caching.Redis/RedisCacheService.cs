@@ -49,7 +49,6 @@ namespace SanteDB.Caching.Redis
     {
 
         private const string FIELD_VALUE = "value";
-        private const string FIELD_STATE = "state";
         private const string FIELD_TYPE = "type";
 
         /// <summary>
@@ -102,78 +101,57 @@ namespace SanteDB.Caching.Redis
         /// <summary>
         /// Serialize objects
         /// </summary>
-        private HashEntry[] SerializeObject(IdentifiedData data)
+        private RedisValue SerializeObject(IdentifiedData data)
         {
             
             data.BatchOperation = Core.Model.DataTypes.BatchOperationType.Auto;
             XmlSerializer xsz = XmlModelSerializerFactory.Current.CreateSerializer(data.GetType());
-            HashEntry[] retVal = new HashEntry[3];
-            retVal[0] = new HashEntry(FIELD_TYPE, data.GetType().AssemblyQualifiedName);
-            retVal[1] = new HashEntry(FIELD_STATE, (int)data.LoadState);
 
             using (var ms = new MemoryStream())
             {
-                using(var gzs = new GZipStream(ms, CompressionLevel.Fastest))
+                using (var gzs = new GZipStream(ms, CompressionLevel.Fastest))
+                {
+                    var objectTypeData = System.Text.Encoding.UTF8.GetBytes(data.GetType().AssemblyQualifiedName);
+                    var objectTypeLength = BitConverter.GetBytes(objectTypeData.Length);
+                    gzs.Write(objectTypeLength, 0, objectTypeLength.Length);
+                    gzs.Write(objectTypeData, 0, objectTypeData.Length);
                     xsz.Serialize(gzs, data);
-                retVal[2] = new HashEntry(FIELD_VALUE, ms.ToArray());
+                }
+
+                return (RedisValue)ms.ToArray();
             }
-            return retVal;
         }
 
         /// <summary>
         /// Serialize objects
         /// </summary>
-        private IdentifiedData DeserializeObject(RedisValue rvType, RedisValue rvState, RedisValue rvValue)
+        private IdentifiedData DeserializeObject(RedisValue rvValue)
         {
 
-            if (!rvValue.HasValue|| !rvType.HasValue) return null;
-
-            Type type = Type.GetType((String)rvType);
-            LoadState ls = (LoadState)(int)rvState;
+            if (!rvValue.HasValue) return null;
 
             // Find serializer
-            XmlSerializer xsz = XmlModelSerializerFactory.Current.CreateSerializer(type);
             using (var sr = new MemoryStream((byte[])rvValue))
             {
                 using (var gzs = new GZipStream(sr, CompressionMode.Decompress))
                 {
-                    var retVal = xsz.Deserialize(gzs) as IdentifiedData;
-                    retVal.LoadState = ls;
-                    return retVal;
+                    // First 4 bytes are the length header
+                    byte[] headerLengthBytes = new byte[4], headerType = null;
+                    gzs.Read(headerLengthBytes, 0, 4);
+                    // Now read the type registration
+                    var headerLength = BitConverter.ToInt32(headerLengthBytes, 0);
+                    headerType = new byte[headerLength];
+                    gzs.Read(headerType, 0, headerLength);
+
+                    // Now get the type and serializer
+                    var typeString = System.Text.Encoding.UTF8.GetString(headerType);
+                    var type = Type.GetType(typeString);
+                    XmlSerializer xsz = XmlModelSerializerFactory.Current.CreateSerializer(type);
+                    return xsz.Deserialize(gzs) as IdentifiedData;
                 }
             }
 
         }
-
-        ///// <summary>
-        ///// Ensure cache consistency
-        ///// </summary>
-        //private void EnsureCacheConsistency(DataCacheEventArgs e, bool skipMe = false)
-        //{
-        //    // If someone inserts a relationship directly, we need to unload both the source and target so they are re-loaded 
-        //    if (e.Object is ActParticipation ptcpt)
-        //    {
-        //        this.Remove(ptcpt.SourceEntityKey.GetValueOrDefault());
-        //        this.Remove(ptcpt.PlayerEntityKey.GetValueOrDefault());
-        //        //MemoryCache.Current.RemoveObject(ptcpt.PlayerEntity?.GetType() ?? typeof(Entity), ptcpt.PlayerEntityKey);
-        //    }
-        //    else if (e.Object is ActRelationship actrel)
-        //    {
-        //        this.Remove(actrel.SourceEntityKey.GetValueOrDefault());
-        //        this.Remove(actrel.TargetActKey.GetValueOrDefault());
-        //    }
-        //    else if (e.Object is EntityRelationship entrel)
-        //    {
-        //        this.Remove(entrel.SourceEntityKey.GetValueOrDefault());
-        //        this.Remove(entrel.TargetEntityKey.GetValueOrDefault());
-        //    }
-        //    else if (e.Object is IHasRelationships irel && e.Object is IIdentifiedEntity idi && !skipMe)
-        //    {
-        //        // Remove all sources of my relationships where I am the target 
-        //        irel.Relationships.Where(o => o.TargetEntityKey == idi.Key).ToList().ForEach(o => this.Remove(o.SourceEntityKey.GetValueOrDefault()));
-
-        //    }
-        //}
 
         /// <summary>
         /// Add an object to the REDIS cache
@@ -212,26 +190,12 @@ namespace SanteDB.Caching.Redis
                         taggable.RemoveTag(tag.TagKey);
                     }
                 }
-                // Only add data which is an entity, act, or relationship
-                //if (data is Act || data is Entity || data is ActRelationship || data is ActParticipation || data is EntityRelationship || data is Concept)
-                //{
-                // Add
+              
 
                 var redisDb = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.CacheDatabaseId);
+                var cacheKey = data.Key.Value.ToString();
 
-                redisDb.HashSet(data.Key.Value.ToString(), this.SerializeObject(data), CommandFlags.FireAndForget);
-                redisDb.KeyExpire(data.Key.Value.ToString(), this.m_configuration.TTL, CommandFlags.FireAndForget);
-
-                // If this is a relationship class we remove the source entity from the cache
-                if (data is ITargetedAssociation targetedAssociation)
-                {
-                    this.Remove(targetedAssociation.SourceEntityKey.GetValueOrDefault());
-                    this.Remove(targetedAssociation.TargetEntityKey.GetValueOrDefault());
-                }
-                else if (data is ISimpleAssociation simpleAssociation)
-                {
-                    this.Remove(simpleAssociation.SourceEntityKey.GetValueOrDefault());
-                }
+                redisDb.StringSet(cacheKey, this.SerializeObject(data), expiry: this.m_configuration.TTL, flags: CommandFlags.FireAndForget);
 
                 //this.EnsureCacheConsistency(new DataCacheEventArgs(data));
                 if (this.m_configuration.PublishChanges)
@@ -242,9 +206,9 @@ namespace SanteDB.Caching.Redis
 #endif
 
                     if (existing)
-                        RedisConnectionManager.Current.Connection.GetSubscriber().Publish("oiz.events", $"PUT http://{Environment.MachineName}/cache/{data.Key.Value}");
+                        RedisConnectionManager.Current.Connection.GetSubscriber().Publish("oiz.events", $"PUT http://{Environment.MachineName}/cache/{cacheKey}");
                     else
-                        RedisConnectionManager.Current.Connection.GetSubscriber().Publish("oiz.events", $"POST http://{Environment.MachineName}/cache/{data.Key.Value}");
+                        RedisConnectionManager.Current.Connection.GetSubscriber().Publish("oiz.events", $"POST http://{Environment.MachineName}/cache/{cacheKey}");
                     //}
                 }
             }
@@ -254,10 +218,30 @@ namespace SanteDB.Caching.Redis
             }
         }
 
+
+        /// <summary>
+        /// Get cache item
+        /// </summary>
+        /// <typeparam name="TData"></typeparam>
+        /// <param name="key"></param>
+        /// <returns></returns>
+        public TData GetCacheItem<TData>(Guid key) where TData : IdentifiedData
+        {
+            var retVal = this.GetCacheItem(key);
+            if(retVal is TData td)
+            {
+                return td;
+            }
+            else
+            {
+                this.Remove(key);
+                return default(TData);
+            }
+        }
         /// <summary>
         /// Get a cache item
         /// </summary>
-        public object GetCacheItem(Guid key)
+        public object GetCacheItem(Guid key) 
         {
             try
             {
@@ -266,12 +250,15 @@ namespace SanteDB.Caching.Redis
                     return null;
 
                 // Add
+                var cacheKey = key.ToString();
+
                 var redisDb = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.CacheDatabaseId);
-                redisDb.KeyExpire(key.ToString(), this.m_configuration.TTL, CommandFlags.FireAndForget);
-                var hdata = redisDb.HashGetAll(key.ToString()).ToDictionary(o=>(String)o.Name, o=>o.Value);
-                if (hdata.Count == 0)
+                redisDb.KeyExpire(cacheKey, this.m_configuration.TTL, CommandFlags.FireAndForget);
+                var hdata = redisDb.StringGet(cacheKey);
+                if (!hdata.HasValue)
                     return null;
-                return this.DeserializeObject(hdata[FIELD_TYPE], hdata[FIELD_STATE],hdata[FIELD_VALUE]);
+                
+                return this.DeserializeObject(hdata);
             }
             catch (Exception e)
             {
@@ -283,17 +270,7 @@ namespace SanteDB.Caching.Redis
 
         }
 
-        /// <summary>
-        /// Get cache item of type
-        /// </summary>
-        public TData GetCacheItem<TData>(Guid key) where TData : IdentifiedData
-        {
-            var retVal = this.GetCacheItem(key);
-            if (retVal is TData)
-                return (TData)retVal;
-            else return null;
-        }
-
+     
         /// <summary>
         /// Remove a hash key item
         /// </summary>
@@ -302,13 +279,14 @@ namespace SanteDB.Caching.Redis
             // We want to add
             if (RedisConnectionManager.Current.Connection == null)
                 return;
-            // Add
-            var existing = this.GetCacheItem(key);
-            var redisDb = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.CacheDatabaseId);
-            redisDb.KeyDelete(key.ToString(), CommandFlags.FireAndForget);
-            //this.EnsureCacheConsistency(new DataCacheEventArgs(existing), true);
 
-            RedisConnectionManager.Current.Connection.GetSubscriber().Publish("oiz.events", $"DELETE http://{Environment.MachineName}/cache/{key}");
+            var redisDb = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.CacheDatabaseId);
+            var cacheKey = key.ToString();
+            redisDb.KeyDelete(cacheKey, CommandFlags.FireAndForget);
+            if (this.m_configuration.PublishChanges)
+            {
+                RedisConnectionManager.Current.Connection.GetSubscriber().Publish("oiz.events", $"DELETE http://{Environment.MachineName}/cache/{cacheKey}");
+            }
         }
 
         /// <summary>
@@ -337,16 +315,16 @@ namespace SanteDB.Caching.Redis
                         var verb = messageParts[0];
                         var uri = new Uri(messageParts[1]);
 
-                        string resource = uri.AbsolutePath.Replace("hdsi/", ""),
+                        string resource = uri.AbsolutePath.Replace("cache/", ""),
                             id = uri.AbsolutePath.Substring(uri.AbsolutePath.LastIndexOf("/") + 1);
 
                         switch (verb.ToLower())
                         {
                             case "post":
-                                this.Added?.Invoke(this, new DataCacheEventArgs(this.GetCacheItem(Guid.Parse(id))));
+                                //TODO: this.Added?.Invoke(this, new DataCacheEventArgs(this.GetCacheItem(Guid.Parse(id))));
                                 break;
                             case "put":
-                                this.Updated?.Invoke(this, new DataCacheEventArgs(this.GetCacheItem(Guid.Parse(id))));
+                                // TODO: this.Updated?.Invoke(this, new DataCacheEventArgs(this.GetCacheItem(Guid.Parse(id))));
                                 break;
                             case "delete":
                                 this.Removed?.Invoke(this, new DataCacheEventArgs(id));
@@ -389,6 +367,23 @@ namespace SanteDB.Caching.Redis
             catch (Exception e)
             {
                 this.m_tracer.TraceWarning("Could not flush REDIS cache: {0}", e);
+            }
+        }
+
+        /// <summary>
+        /// Returns tru if the cache contains the specified id
+        /// </summary>
+        public bool Exists<T>(Guid id)
+        {
+            try
+            {
+                var db = RedisConnectionManager.Current.Connection?.GetDatabase(RedisCacheConstants.AdhocCacheDatabaseId);
+                return db.KeyExists(id.ToString());
+            }
+            catch (Exception e)
+            {
+                this.m_tracer.TraceError("Error removing entity from ad-hoc cache : {0}", e);
+                return false;
             }
         }
 
