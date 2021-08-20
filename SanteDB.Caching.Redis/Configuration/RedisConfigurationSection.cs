@@ -19,6 +19,7 @@
 using SanteDB.Core.Configuration;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Xml;
 using System.Xml.Serialization;
 
@@ -34,25 +35,26 @@ namespace SanteDB.Caching.Redis.Configuration
         /// <summary>
         /// Gets the configuration connection string
         /// </summary>
-        [XmlArray("servers"), XmlArrayItem("add")]
-        public List<String> Servers { get; set; }
+        [XmlArray("servers"), XmlArrayItem("add"), DisplayName("REDIS Server(s)"), Description("Sets one or more REDIS servers to use for the caching of data")]
+        public String[] Servers { get; set; }
 
         /// <summary>
         /// Username
         /// </summary>
-        [XmlAttribute("username")]
+        [XmlAttribute("username"), DisplayName("REDIS User"), Description("If the REDIS infrastructure requires authentication, the user name to authenticate with")]
         public String UserName { get; set; }
 
         /// <summary>
         /// Password to the server
         /// </summary>
         [XmlAttribute("password")]
+        [PasswordPropertyTextAttribute, DisplayName("Password"), Description("The password to use when connecting to REDIS")]
         public String Password { get; set; }
 
         /// <summary>
         /// Time to live for XML serialization
         /// </summary>
-        [XmlAttribute("ttl")]
+        [XmlAttribute("ttl"), Browsable(false)]
         public string TTLXml
         {
             get { return this.TTL.HasValue ? XmlConvert.ToString(this.TTL.Value) : null; }
@@ -62,13 +64,14 @@ namespace SanteDB.Caching.Redis.Configuration
         /// <summary>
         /// Gets or sets the time to live
         /// </summary>
-        [XmlIgnore]
+        [XmlIgnore, DisplayName("TTL"), Description("The maximum time that cache entries have to live in the REDIS cache")]
+        [Editor("SanteDB.Configuration.Editors.TimespanPickerEditor, SanteDB.Configuration", "System.Drawing.Design.UITypeEditor, System.Drawing")]
         public TimeSpan? TTL { get; private set; }
 
         /// <summary>
         /// When true notify other systems of the changes
         /// </summary>
-        [XmlAttribute("publish")]
+        [XmlAttribute("publish"), DisplayName("Broadcast Changes"), Description("When true, use the REDIS pub/sub infrastructure to broadcast changes ")]
         public bool PublishChanges { get; set; }
 
     }

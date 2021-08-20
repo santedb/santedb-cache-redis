@@ -63,7 +63,7 @@ namespace SanteDB.Caching.Redis.Docker
                 redisSetting = new RedisConfigurationSection()
                 {
                     PublishChanges = false,
-                    Servers=new List<string>() {  "127.0.0.1:6379" }
+                    Servers = new string[] {  "127.0.0.1:6379" }
                 };
                 configuration.AddSection(redisSetting);
             }
@@ -71,7 +71,7 @@ namespace SanteDB.Caching.Redis.Docker
 
             if (settings.TryGetValue(RedisAddressSetting, out string redisServer))
             {
-                redisSetting.Servers = new List<string>() { redisServer };
+                redisSetting.Servers = new string [] { redisServer };
             }
 
             // Add services
