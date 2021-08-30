@@ -35,9 +35,17 @@ namespace SanteDB.Caching.Redis.Configuration
     {
 
         /// <summary>
+        /// REDIS Configuration
+        /// </summary>
+        public RedisConfigurationSection()
+        {
+            this.TTL = new TimeSpan(0, 15, 0);
+        }
+
+        /// <summary>
         /// Gets the configuration connection string
         /// </summary>
-        [XmlArray("servers"), XmlArrayItem("add"), DisplayName("REDIS Server(s)"), Description("Sets one or more REDIS servers to use for the caching of data")]
+        [XmlArray("servers"), XmlArrayItem("add"), DisplayName("REDIS Server(s)"), Description("Sets one or more REDIS servers to use for the caching of data in format HOST:PORT")]
         public String[] Servers { get; set; }
 
         /// <summary>
