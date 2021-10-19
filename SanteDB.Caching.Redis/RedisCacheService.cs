@@ -2,22 +2,23 @@
  * Copyright (C) 2021 - 2021, SanteSuite Inc. and the SanteSuite Contributors (See NOTICE.md for full copyright notices)
  * Copyright (C) 2019 - 2021, Fyfe Software Inc. and the SanteSuite Contributors
  * Portions Copyright (C) 2015-2018 Mohawk College of Applied Arts and Technology
- * 
- * Licensed under the Apache License, Version 2.0 (the "License"); you 
- * may not use this file except in compliance with the License. You may 
- * obtain a copy of the License at 
- * 
- * http://www.apache.org/licenses/LICENSE-2.0 
- * 
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you
+ * may not use this file except in compliance with the License. You may
+ * obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the 
- * License for the specific language governing permissions and limitations under 
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations under
  * the License.
- * 
+ *
  * User: fyfej
  * Date: 2021-8-5
  */
+
 using SanteDB.Caching.Redis.Configuration;
 using SanteDB.Core;
 using SanteDB.Core.Diagnostics;
@@ -49,7 +50,6 @@ namespace SanteDB.Caching.Redis
     [ServiceProvider("REDIS Data Caching Service", Configuration = typeof(RedisConfigurationSection))]
     public class RedisCacheService : IDataCachingService, IDaemonService
     {
-
         private const string FIELD_VALUE = "value";
         private const string FIELD_TYPE = "type";
 
@@ -74,7 +74,7 @@ namespace SanteDB.Caching.Redis
         private object m_lockObject = new object();
 
         /// <summary>
-        /// Is the service running 
+        /// Is the service running
         /// </summary>
         public bool IsRunning
         {
@@ -86,26 +86,30 @@ namespace SanteDB.Caching.Redis
 
         // Data was added to the cache
         public event EventHandler<DataCacheEventArgs> Added;
+
         // Data was removed from the cache
         public event EventHandler<DataCacheEventArgs> Removed;
-        // Started 
+
+        // Started
         public event EventHandler Started;
+
         // Starting
         public event EventHandler Starting;
+
         // Stopped
         public event EventHandler Stopped;
+
         // Stopping
         public event EventHandler Stopping;
+
         // Data was updated on the cache
         public event EventHandler<DataCacheEventArgs> Updated;
-
 
         /// <summary>
         /// Serialize objects
         /// </summary>
         private RedisValue SerializeObject(IdentifiedData data)
         {
-            
             data.BatchOperation = Core.Model.DataTypes.BatchOperationType.Auto;
             XmlSerializer xsz = XmlModelSerializerFactory.Current.CreateSerializer(data.GetType());
 
@@ -129,6 +133,7 @@ namespace SanteDB.Caching.Redis
         /// </summary>
         private IdentifiedData DeserializeObject(RedisValue rvValue)
         {
+            if (!rvValue.HasValue || !rvType.HasValue) return null;
 
             if (!rvValue.HasValue) return null;
 
@@ -152,21 +157,19 @@ namespace SanteDB.Caching.Redis
                     return xsz.Deserialize(gzs) as IdentifiedData;
                 }
             }
-
         }
 
         /// <summary>
         /// Add an object to the REDIS cache
         /// </summary>
         /// <remarks>
-        /// Serlializes <paramref name="data"/> into XML and then persists the 
+        /// Serlializes <paramref name="data"/> into XML and then persists the
         /// result in a configured REDIS cache.
         /// </remarks>
         public void Add(IdentifiedData data)
         {
             try
             {
-
                 // We want to add only those when the connection is present
                 if (RedisConnectionManager.Current.Connection == null || data == null || !data.Key.HasValue ||
                     (data as BaseEntityData)?.ObsoletionTime.HasValue == true ||
@@ -192,7 +195,6 @@ namespace SanteDB.Caching.Redis
                         taggable.RemoveTag(tag.TagKey);
                     }
                 }
-              
 
                 var redisDb = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.CacheDatabaseId);
                 var cacheKey = data.Key.Value.ToString();
@@ -220,7 +222,6 @@ namespace SanteDB.Caching.Redis
             }
         }
 
-
         /// <summary>
         /// Get cache item
         /// </summary>
@@ -243,7 +244,7 @@ namespace SanteDB.Caching.Redis
         /// <summary>
         /// Get a cache item
         /// </summary>
-        public object GetCacheItem(Guid key) 
+        public object GetCacheItem(Guid key)
         {
             try
             {
@@ -259,7 +260,7 @@ namespace SanteDB.Caching.Redis
                 var hdata = redisDb.StringGet(cacheKey);
                 if (!hdata.HasValue)
                     return null;
-                
+
                 return this.DeserializeObject(hdata);
             }
             catch (Exception e)
@@ -269,10 +270,8 @@ namespace SanteDB.Caching.Redis
 
                 return null;
             }
-
         }
 
-     
         /// <summary>
         /// Remove a hash key item
         /// </summary>
@@ -281,13 +280,34 @@ namespace SanteDB.Caching.Redis
             // We want to add
             if (RedisConnectionManager.Current.Connection == null)
                 return;
+            // Add
+            var existing = this.GetCacheItem(key);
+            this.Remove(existing as IdentifiedData);
+        }
+
+        /// <summary>
+        /// Remove the object from the database
+        /// </summary>
+        /// <param name="entry"></param>
+        public void Remove(IdentifiedData entry)
+        {
+            if (entry == null) return;
 
             var redisDb = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.CacheDatabaseId);
-            var cacheKey = key.ToString();
-            redisDb.KeyDelete(cacheKey, CommandFlags.FireAndForget);
+            redisDb.KeyDelete(entry.Key.ToString(), CommandFlags.FireAndForget);
+            //this.EnsureCacheConsistency(new DataCacheEventArgs(existing), true);
+            if (entry is ISimpleAssociation sa)
+            {
+                this.Remove(sa.SourceEntityKey.GetValueOrDefault());
+                if (sa is ITargetedAssociation ta)
+                {
+                    this.Remove(ta.TargetEntityKey.GetValueOrDefault());
+                }
+            }
+
             if (this.m_configuration.PublishChanges)
             {
-                RedisConnectionManager.Current.Connection.GetSubscriber().Publish("oiz.events", $"DELETE http://{Environment.MachineName}/cache/{cacheKey}");
+                RedisConnectionManager.Current.Connection.GetSubscriber().Publish("oiz.events", $"DELETE http://{Environment.MachineName}/cache/{entry.Key}");
             }
         }
 
@@ -310,7 +330,6 @@ namespace SanteDB.Caching.Redis
                 if (this.m_configuration.PublishChanges)
                     RedisConnectionManager.Current.Subscriber.Subscribe("oiz.events", (channel, message) =>
                     {
-
                         this.m_tracer.TraceVerbose("Received event {0} on {1}", message, channel);
 
                         var messageParts = ((string)message).Split(' ');
@@ -325,9 +344,11 @@ namespace SanteDB.Caching.Redis
                             case "post":
                                 //TODO: this.Added?.Invoke(this, new DataCacheEventArgs(this.GetCacheItem(Guid.Parse(id))));
                                 break;
+
                             case "put":
                                 // TODO: this.Updated?.Invoke(this, new DataCacheEventArgs(this.GetCacheItem(Guid.Parse(id))));
                                 break;
+
                             case "delete":
                                 this.Removed?.Invoke(this, new DataCacheEventArgs(id));
                                 break;
