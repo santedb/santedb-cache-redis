@@ -119,8 +119,15 @@ namespace SanteDB.Caching.Redis
 
             using (var ms = new MemoryStream())
             {
-                using (var gzs = new GZipStream(ms, CompressionLevel.Fastest))
-                    xsz.Serialize(gzs, data);
+                if (this.m_configuration.Compress)
+                {
+                    using (var gzs = new GZipStream(ms, CompressionLevel.Fastest))
+                        xsz.Serialize(gzs, data);
+                }
+                else
+                {
+                    xsz.Serialize(ms, data);
+                }
                 retVal[2] = new HashEntry(FIELD_VALUE, ms.ToArray());
             }
             return retVal;
@@ -140,12 +147,20 @@ namespace SanteDB.Caching.Redis
             XmlSerializer xsz = XmlModelSerializerFactory.Current.CreateSerializer(type);
             using (var sr = new MemoryStream((byte[])rvValue))
             {
-                using (var gzs = new GZipStream(sr, CompressionMode.Decompress))
+                IdentifiedData retVal = null;
+                if (this.m_configuration.Compress)
                 {
-                    var retVal = xsz.Deserialize(gzs) as IdentifiedData;
-                    retVal.LoadState = ls;
-                    return retVal;
+                    using (var gzs = new GZipStream(sr, CompressionMode.Decompress))
+                    {
+                        retVal = xsz.Deserialize(gzs) as IdentifiedData;
+                    }
                 }
+                else
+                {
+                    retVal = xsz.Deserialize(sr) as IdentifiedData;
+                }
+                retVal.LoadState = ls;
+                return retVal;
             }
         }
 
