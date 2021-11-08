@@ -133,7 +133,7 @@ namespace SanteDB.Caching.Redis
         /// </summary>
         private IdentifiedData DeserializeObject(RedisValue rvValue)
         {
-            if (!rvValue.HasValue || !rvType.HasValue) return null;
+            if (!rvValue.HasValue) return null;
 
             if (!rvValue.HasValue) return null;
 
