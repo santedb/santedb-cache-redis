@@ -115,17 +115,20 @@ namespace SanteDB.Caching.Redis
 
             using (var ms = new MemoryStream())
             {
-                using (var gzs = new GZipStream(ms, CompressionLevel.Fastest))
+                var targetStream = ms;
+                if (this.m_configuration.Compress)
                 {
-                    var objectTypeData = System.Text.Encoding.UTF8.GetBytes(data.GetType().AssemblyQualifiedName);
-                    var objectTypeLength = BitConverter.GetBytes(objectTypeData.Length);
-                    gzs.Write(objectTypeLength, 0, objectTypeLength.Length);
-                    gzs.Write(objectTypeData, 0, objectTypeData.Length);
-                    xsz.Serialize(gzs, data);
+                    targetStream = new GZipStream(ms, CompressionLevel.Fastest);
                 }
+                var objectTypeData = System.Text.Encoding.UTF8.GetBytes(data.GetType().AssemblyQualifiedName);
+                var objectTypeLength = BitConverter.GetBytes(objectTypeData.Length);
 
-                return (RedisValue)ms.ToArray();
+                targetStream.Write(objectTypeLength, 0, objectTypeLength.Length);
+                targetStream.Write(objectTypeData, 0, objectTypeData.Length);
+                xsz.Serialize(targetStream, data);
+                targetStream.Dispose();
             }
+            return retVal;
         }
 
         /// <summary>
@@ -140,22 +143,24 @@ namespace SanteDB.Caching.Redis
             // Find serializer
             using (var sr = new MemoryStream((byte[])rvValue))
             {
-                using (var gzs = new GZipStream(sr, CompressionMode.Decompress))
+                IdentifiedData retVal = null;
+                var targetStream = sr;
+                if (this.m_configuration.Compress)
                 {
-                    // First 4 bytes are the length header
-                    byte[] headerLengthBytes = new byte[4], headerType = null;
-                    gzs.Read(headerLengthBytes, 0, 4);
-                    // Now read the type registration
-                    var headerLength = BitConverter.ToInt32(headerLengthBytes, 0);
-                    headerType = new byte[headerLength];
-                    gzs.Read(headerType, 0, headerLength);
-
-                    // Now get the type and serializer
-                    var typeString = System.Text.Encoding.UTF8.GetString(headerType);
-                    var type = Type.GetType(typeString);
-                    XmlSerializer xsz = XmlModelSerializerFactory.Current.CreateSerializer(type);
-                    return xsz.Deserialize(gzs) as IdentifiedData;
+                    targetStream = new GZipStream(sr, CompressionMode.Decompress));
                 }
+                byte[] headerLengthBytes = new byte[4], headerType = null;
+                targetStream.Read(headerLengthBytes, 0, 4);
+                // Now read the type registration
+                var headerLength = BitConverter.ToInt32(headerLengthBytes, 0);
+                headerType = new byte[headerLength];
+                targetStream.Read(headerType, 0, headerLength);
+
+                // Now get the type and serializer
+                var typeString = System.Text.Encoding.UTF8.GetString(headerType);
+                var type = Type.GetType(typeString);
+                XmlSerializer xsz = XmlModelSerializerFactory.Current.CreateSerializer(type);
+                var retVal = xsz.Deserialize(targetStream) as IdentifiedData;
             }
         }
 
@@ -231,7 +236,7 @@ namespace SanteDB.Caching.Redis
         public TData GetCacheItem<TData>(Guid key) where TData : IdentifiedData
         {
             var retVal = this.GetCacheItem(key);
-            if(retVal is TData td)
+            if (retVal is TData td)
             {
                 return td;
             }
