@@ -52,7 +52,7 @@ namespace SanteDB.Caching.Redis
         public string ServiceName => "REDIS Ad-Hoc Caching Service";
 
         // Redis trace source
-        private Tracer m_tracer = new Tracer(RedisCacheConstants.TraceSourceName);
+        private readonly Tracer m_tracer = new Tracer(RedisCacheConstants.TraceSourceName);
 
         // Configuration
         private RedisConfigurationSection m_configuration = ApplicationServiceContext.Current.GetService<IConfigurationManager>().GetSection<RedisConfigurationSection>();

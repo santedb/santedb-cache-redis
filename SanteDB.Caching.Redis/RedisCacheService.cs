@@ -59,7 +59,7 @@ namespace SanteDB.Caching.Redis
         public string ServiceName => "REDIS Data Caching Service";
 
         // Redis trace source
-        private Tracer m_tracer = new Tracer(RedisCacheConstants.TraceSourceName);
+        private readonly Tracer m_tracer = new Tracer(RedisCacheConstants.TraceSourceName);
 
         // Configuration
         private RedisConfigurationSection m_configuration = ApplicationServiceContext.Current.GetService<IConfigurationManager>().GetSection<RedisConfigurationSection>();
@@ -106,61 +106,86 @@ namespace SanteDB.Caching.Redis
         public event EventHandler<DataCacheEventArgs> Updated;
 
         /// <summary>
-        /// Serialize objects
+        /// Serialize to stream
         /// </summary>
-        private RedisValue SerializeObject(IdentifiedData data)
+        private void SerializeToStream(IdentifiedData data, Stream targetStream)
         {
-            data.BatchOperation = Core.Model.DataTypes.BatchOperationType.Auto;
             XmlSerializer xsz = XmlModelSerializerFactory.Current.CreateSerializer(data.GetType());
+            var objectTypeData = System.Text.Encoding.UTF8.GetBytes(data.GetType().AssemblyQualifiedName);
+            var objectTypeLength = BitConverter.GetBytes(objectTypeData.Length);
 
-            using (var ms = new MemoryStream())
-            {
-                var targetStream = ms;
-                if (this.m_configuration.Compress)
-                {
-                    targetStream = new GZipStream(ms, CompressionLevel.Fastest);
-                }
-                var objectTypeData = System.Text.Encoding.UTF8.GetBytes(data.GetType().AssemblyQualifiedName);
-                var objectTypeLength = BitConverter.GetBytes(objectTypeData.Length);
-
-                targetStream.Write(objectTypeLength, 0, objectTypeLength.Length);
-                targetStream.Write(objectTypeData, 0, objectTypeData.Length);
-                xsz.Serialize(targetStream, data);
-                targetStream.Dispose();
-            }
-            return retVal;
+            targetStream.Write(objectTypeLength, 0, objectTypeLength.Length);
+            targetStream.Write(objectTypeData, 0, objectTypeData.Length);
+            xsz.Serialize(targetStream, data);
         }
 
         /// <summary>
         /// Serialize objects
         /// </summary>
-        private IdentifiedData DeserializeObject(RedisValue rvValue)
+        private RedisValue SerializeToRedisValue(IdentifiedData data)
         {
-            if (!rvValue.HasValue) return null;
+            data.BatchOperation = Core.Model.DataTypes.BatchOperationType.Auto;
 
+            using (var ms = new MemoryStream())
+            {
+                if (this.m_configuration.Compress)
+                {
+                    using (var gzs = new GZipStream(ms, CompressionLevel.Fastest))
+                    {
+                        this.SerializeToStream(data, gzs);
+                    }
+                }
+                else
+                {
+                    this.SerializeToStream(data, ms);
+                }
+
+                return ms.ToArray();
+            }
+        }
+
+        /// <summary>
+        /// De-serialize object from stream
+        /// </summary>
+        /// <param name="sourceStream">The stream to read from</param>
+        /// <returns>The parsed object</returns>
+        private IdentifiedData DeserializeObjectFromStream(Stream sourceStream)
+        {
+            byte[] headerLengthBytes = new byte[4], headerType = null;
+            sourceStream.Read(headerLengthBytes, 0, 4);
+            // Now read the type registration
+            var headerLength = BitConverter.ToInt32(headerLengthBytes, 0);
+            headerType = new byte[headerLength];
+            sourceStream.Read(headerType, 0, headerLength);
+
+            // Now get the type and serializer
+            var typeString = System.Text.Encoding.UTF8.GetString(headerType);
+            var type = Type.GetType(typeString);
+            XmlSerializer xsz = XmlModelSerializerFactory.Current.CreateSerializer(type);
+            return xsz.Deserialize(sourceStream) as IdentifiedData;
+        }
+
+        /// <summary>
+        /// Serialize objects
+        /// </summary>
+        private IdentifiedData DeserializeObjectFromRedis(RedisValue rvValue)
+        {
             if (!rvValue.HasValue) return null;
 
             // Find serializer
             using (var sr = new MemoryStream((byte[])rvValue))
             {
-                IdentifiedData retVal = null;
-                var targetStream = sr;
                 if (this.m_configuration.Compress)
                 {
-                    targetStream = new GZipStream(sr, CompressionMode.Decompress));
+                    using (var gzs = new GZipStream(sr, CompressionMode.Decompress))
+                    {
+                        return this.DeserializeObjectFromStream(gzs);
+                    }
                 }
-                byte[] headerLengthBytes = new byte[4], headerType = null;
-                targetStream.Read(headerLengthBytes, 0, 4);
-                // Now read the type registration
-                var headerLength = BitConverter.ToInt32(headerLengthBytes, 0);
-                headerType = new byte[headerLength];
-                targetStream.Read(headerType, 0, headerLength);
-
-                // Now get the type and serializer
-                var typeString = System.Text.Encoding.UTF8.GetString(headerType);
-                var type = Type.GetType(typeString);
-                XmlSerializer xsz = XmlModelSerializerFactory.Current.CreateSerializer(type);
-                var retVal = xsz.Deserialize(targetStream) as IdentifiedData;
+                else
+                {
+                    return this.DeserializeObjectFromStream(sr);
+                }
             }
         }
 
@@ -204,7 +229,7 @@ namespace SanteDB.Caching.Redis
                 var redisDb = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.CacheDatabaseId);
                 var cacheKey = data.Key.Value.ToString();
 
-                redisDb.StringSet(cacheKey, this.SerializeObject(data), expiry: this.m_configuration.TTL, flags: CommandFlags.FireAndForget);
+                redisDb.StringSet(cacheKey, this.SerializeToRedisValue(data), expiry: this.m_configuration.TTL, flags: CommandFlags.FireAndForget);
 
                 //this.EnsureCacheConsistency(new DataCacheEventArgs(data));
                 if (this.m_configuration.PublishChanges)
@@ -246,6 +271,7 @@ namespace SanteDB.Caching.Redis
                 return default(TData);
             }
         }
+
         /// <summary>
         /// Get a cache item
         /// </summary>
@@ -266,7 +292,7 @@ namespace SanteDB.Caching.Redis
                 if (!hdata.HasValue)
                     return null;
 
-                return this.DeserializeObject(hdata);
+                return this.DeserializeObjectFromRedis(hdata);
             }
             catch (Exception e)
             {
