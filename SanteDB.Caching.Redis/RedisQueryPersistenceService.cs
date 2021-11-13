@@ -282,5 +282,24 @@ namespace SanteDB.Caching.Redis
             this.Stopped?.Invoke(this, EventArgs.Empty);
             return true;
         }
+
+        /// <summary>
+        /// Abort the query set <paramref name="queryId"/>
+        /// </summary>
+        public void AbortQuerySet(Guid queryId)
+        {
+            try
+            {
+                var redisConn = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.QueryDatabaseId);
+                redisConn.KeyDelete($"{queryId}.{FIELD_QUERY_TAG_IDX}", flags: CommandFlags.FireAndForget);
+                redisConn.KeyDelete($"{queryId}.{FIELD_QUERY_RESULT_IDX}", flags: CommandFlags.FireAndForget);
+                redisConn.KeyDelete($"{queryId}.{FIELD_QUERY_TOTAL_RESULTS}", flags: CommandFlags.FireAndForget);
+            }
+            catch (Exception e)
+            {
+                this.m_tracer.TraceError("Error setting tags in REDIS: {0}", e);
+                throw new Exception("Error setting query tag in REDIS", e);
+            }
+        }
     }
 }
