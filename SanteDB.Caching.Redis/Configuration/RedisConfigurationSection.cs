@@ -21,7 +21,6 @@
 
 using SanteDB.Core.Configuration;
 using System;
-using System.Collections.Generic;
 using System.ComponentModel;
 using System.Xml;
 using System.Xml.Serialization;
@@ -29,7 +28,7 @@ using System.Xml.Serialization;
 namespace SanteDB.Caching.Redis.Configuration
 {
     /// <summary>
-    /// Represents a simple redis configuration
+    /// Configuration section that is used to control the REDIS caching
     /// </summary>
     [XmlType(nameof(RedisConfigurationSection), Namespace = "http://santedb.org/configuration")]
     public class RedisConfigurationSection : IConfigurationSection
@@ -43,33 +42,36 @@ namespace SanteDB.Caching.Redis.Configuration
         }
 
         /// <summary>
-        /// Compress the data
+        /// Gets or sets whether data being sent to the REDIS cache should be compressed
         /// </summary>
+        /// <remarks>This is typically set for remote REDIS servers where bandwidth between the server is limited and the time of
+        /// compressing the data and shipping it to the REDIS server is faster than the time of just sending the data</remarks>
         [XmlAttribute("compress"), DisplayName("Compress Data"), Description("When true, traffic between this server and the REDIS cache server will be compressed")]
         public bool Compress { get; set; }
 
         /// <summary>
-        /// Gets the configuration connection string
+        /// The REDIS server(s) which should be contacted for storing data
         /// </summary>
         [XmlArray("servers"), XmlArrayItem("add"), DisplayName("REDIS Server(s)"), Description("Sets one or more REDIS servers to use for the caching of data in format HOST:PORT")]
         public String[] Servers { get; set; }
 
         /// <summary>
-        /// Username
+        /// If the REDIS server requires authentication, the user name which SanteDB should use to connect to the server
         /// </summary>
         [XmlAttribute("username"), DisplayName("REDIS User"), Description("If the REDIS infrastructure requires authentication, the user name to authenticate with")]
         public String UserName { get; set; }
 
         /// <summary>
-        /// Password to the server
+        /// If the REDIS server requires authentication, the password which SanteDB should use to connect to the server
         /// </summary>
         [XmlAttribute("password")]
         [PasswordPropertyTextAttribute, DisplayName("Password"), Description("The password to use when connecting to REDIS")]
         public String Password { get; set; }
 
         /// <summary>
-        /// Time to live for XML serialization
+        /// XML serialized value of the time-to-live parameter.
         /// </summary>
+        /// <remarks>This is added because the attribute for <see cref="TimeSpan"/> is not supported by the .NET Serializer</remarks>
         [XmlAttribute("ttl"), Browsable(false)]
         public string TTLXml
         {
@@ -78,14 +80,14 @@ namespace SanteDB.Caching.Redis.Configuration
         }
 
         /// <summary>
-        /// Gets or sets the time to live
+        /// Gets or sets the time to live for objects in the server
         /// </summary>
         [XmlIgnore, DisplayName("TTL"), Description("The maximum time that cache entries have to live in the REDIS cache")]
         [Editor("SanteDB.Configuration.Editors.TimespanPickerEditor, SanteDB.Configuration", "System.Drawing.Design.UITypeEditor, System.Drawing")]
         public TimeSpan? TTL { get; private set; }
 
         /// <summary>
-        /// When true notify other systems of the changes
+        /// When true, instructs SanteDB to use the REDIS pub/sub mechanisms to notify other SanteDB servers that a cache object has changed
         /// </summary>
         [XmlAttribute("publish"), DisplayName("Broadcast Changes"), Description("When true, use the REDIS pub/sub infrastructure to broadcast changes ")]
         public bool PublishChanges { get; set; }
