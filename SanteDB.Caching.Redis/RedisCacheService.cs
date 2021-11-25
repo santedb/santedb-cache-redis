@@ -274,7 +274,7 @@ namespace SanteDB.Caching.Redis
         /// <summary>
         /// Get a cache item
         /// </summary>
-        public object GetCacheItem(Guid key)
+        public IdentifiedData GetCacheItem(Guid key)
         {
             try
             {
