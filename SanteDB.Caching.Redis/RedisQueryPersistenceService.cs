@@ -22,31 +22,28 @@
 using SanteDB.Caching.Redis.Configuration;
 using SanteDB.Core;
 using SanteDB.Core.Diagnostics;
-using SanteDB.Core.Interfaces;
 using SanteDB.Core.Services;
 using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace SanteDB.Caching.Redis
 {
     /// <summary>
-    /// Represents a REDIS based query persistence service
+    /// An implementation of the <see cref="IQueryPersistenceService"/> which usees REDIS for its stateful result set
     /// </summary>
+    /// <remarks>
+    /// <para>This persistence service uses REDIS list values to store the UUIDs representing the query executed on the SanteDB server. The data
+    /// is stored in database 2 of the REDIS server.</para>
+    /// </remarks>
     [ServiceProvider("REDIS Query Persistence Service")]
     public class RedisQueryPersistenceService : IQueryPersistenceService, IDaemonService
     {
-        /// <summary>
-        /// Gets the service name
-        /// </summary>
+        /// <inheritdoc/>
         public string ServiceName => "REDIS Query Persistence Service";
 
-        /// <summary>
-        /// True if service is running
-        /// </summary>
+        /// <inheritdoc/>
         public bool IsRunning => this.m_configuration != null;
 
         // Redis trace source
@@ -73,29 +70,19 @@ namespace SanteDB.Caching.Redis
         // Configuration
         private RedisConfigurationSection m_configuration = ApplicationServiceContext.Current.GetService<IConfigurationManager>().GetSection<RedisConfigurationSection>();
 
-        /// <summary>
-        /// Application daemon is starting
-        /// </summary>
+        /// <inheritdoc/>
         public event EventHandler Starting;
 
-        /// <summary>
-        /// Application daemon has started
-        /// </summary>
+        /// <inheritdoc/>
         public event EventHandler Started;
 
-        /// <summary>
-        /// Application is stopping
-        /// </summary>
+        /// <inheritdoc/>
         public event EventHandler Stopping;
 
-        /// <summary>
-        /// Application has stopped
-        /// </summary>
+        /// <inheritdoc/>
         public event EventHandler Stopped;
 
-        /// <summary>
-        /// Add results to the query identifier
-        /// </summary>
+        /// <inheritdoc/>
         public void AddResults(Guid queryId, IEnumerable<Guid> results, int totalResults)
         {
             try
@@ -117,17 +104,13 @@ namespace SanteDB.Caching.Redis
             }
         }
 
-        /// <summary>
-        /// Find query by identifier
-        /// </summary>
+        /// <inheritdoc/>
         public Guid FindQueryId(object queryTag)
         {
             throw new NotSupportedException();
         }
 
-        /// <summary>
-        /// Get query results
-        /// </summary>
+        /// <inheritdoc/>
         public IEnumerable<Guid> GetQueryResults(Guid queryId, int offset, int count)
         {
             try
@@ -149,9 +132,7 @@ namespace SanteDB.Caching.Redis
             }
         }
 
-        /// <summary>
-        /// Gets the query tag
-        /// </summary>
+        /// <inheritdoc/>
         public object GetQueryTag(Guid queryId)
         {
             try
@@ -166,9 +147,7 @@ namespace SanteDB.Caching.Redis
             }
         }
 
-        /// <summary>
-        /// Determines if the query is registered
-        /// </summary>
+        /// <inheritdoc/>
         public bool IsRegistered(Guid queryId)
         {
             try
@@ -183,9 +162,7 @@ namespace SanteDB.Caching.Redis
             }
         }
 
-        /// <summary>
-        /// Attempt to get the total result quantity
-        /// </summary>
+        /// <inheritdoc/>
         public long QueryResultTotalQuantity(Guid queryId)
         {
             try
@@ -203,9 +180,7 @@ namespace SanteDB.Caching.Redis
             }
         }
 
-        /// <summary>
-        /// Registers the specified query result
-        /// </summary>
+        /// <inheritdoc/>
         public bool RegisterQuerySet(Guid queryId, IEnumerable<Guid> results, object tag, int totalResults)
         {
             try
@@ -230,9 +205,7 @@ namespace SanteDB.Caching.Redis
             }
         }
 
-        /// <summary>
-        /// Sets the query tag if it exists
-        /// </summary>
+        /// <inheritdoc/>
         public void SetQueryTag(Guid queryId, object value)
         {
             try
@@ -248,9 +221,7 @@ namespace SanteDB.Caching.Redis
             }
         }
 
-        /// <summary>
-        /// Start the daemon
-        /// </summary>
+        /// <inheritdoc/>
         public bool Start()
         {
             try
@@ -272,9 +243,7 @@ namespace SanteDB.Caching.Redis
             }
         }
 
-        /// <summary>
-        /// Stops the connection broker
-        /// </summary>
+        /// <inheritdoc/>
         public bool Stop()
         {
             this.Stopping?.Invoke(this, EventArgs.Empty);

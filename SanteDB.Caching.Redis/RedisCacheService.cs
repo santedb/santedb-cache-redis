@@ -22,20 +22,14 @@
 using SanteDB.Caching.Redis.Configuration;
 using SanteDB.Core;
 using SanteDB.Core.Diagnostics;
-using SanteDB.Core.Interfaces;
 using SanteDB.Core.Model;
-using SanteDB.Core.Model.Acts;
 using SanteDB.Core.Model.Attributes;
-using SanteDB.Core.Model.Constants;
-using SanteDB.Core.Model.Entities;
 using SanteDB.Core.Model.Interfaces;
 using SanteDB.Core.Model.Serialization;
 using SanteDB.Core.Services;
 using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -45,17 +39,27 @@ using System.Xml.Serialization;
 namespace SanteDB.Caching.Redis
 {
     /// <summary>
-    /// Redis memory caching service
+    /// An implementation of the <see cref="IDataCachingService"/> which uses REDIS
     /// </summary>
+    /// <remarks>
+    /// <para>This implementation of the caching service uses the XMLSerializer in .NET to serialize any object passed in
+    /// via the <see cref="Add(IdentifiedData)"/> method. The data is then compressed (if configured) and sent to the
+    /// configured REDIS server.</para>
+    /// <para>The use of the .NET XML serializer over the Newtonsoft JSON serializer for caching was chosen since the
+    /// serializer operates on streams (saves string conversions) and pre-compiles the serialization classes on .NET Framework implementations
+    /// (Mono implementations use relfection)</para>
+    /// <para>The caching data is stored in database 1 of the REDIS server.</para>
+    /// </remarks>
     [ServiceProvider("REDIS Data Caching Service", Configuration = typeof(RedisConfigurationSection))]
     public class RedisCacheService : IDataCachingService, IDaemonService
     {
+        // The field in the REDIS cache for value
         private const string FIELD_VALUE = "value";
+
+        // The field in the REDIS cache for type
         private const string FIELD_TYPE = "type";
 
-        /// <summary>
-        /// Gets the service name
-        /// </summary>
+        /// <inheritdoc/>
         public string ServiceName => "REDIS Data Caching Service";
 
         // Redis trace source
@@ -67,15 +71,10 @@ namespace SanteDB.Caching.Redis
         // Binder
         private ModelSerializationBinder m_binder = new ModelSerializationBinder();
 
-        // Non cached types
+        // Non cached types - used to ignore cache requests
         private HashSet<Type> m_nonCached = new HashSet<Type>();
 
-        // REDIS sometimes does not like concurrent connections on the multiplexor
-        private object m_lockObject = new object();
-
-        /// <summary>
-        /// Is the service running
-        /// </summary>
+        /// <inheritdoc/>
         public bool IsRunning
         {
             get
@@ -84,25 +83,25 @@ namespace SanteDB.Caching.Redis
             }
         }
 
-        // Data was added to the cache
+        /// <inheritdoc/>
         public event EventHandler<DataCacheEventArgs> Added;
 
-        // Data was removed from the cache
+        /// <inheritdoc/>
         public event EventHandler<DataCacheEventArgs> Removed;
 
-        // Started
+        /// <inheritdoc/>
         public event EventHandler Started;
 
-        // Starting
+        /// <inheritdoc/>
         public event EventHandler Starting;
 
-        // Stopped
+        /// <inheritdoc/>
         public event EventHandler Stopped;
 
-        // Stopping
+        /// <inheritdoc/>
         public event EventHandler Stopping;
 
-        // Data was updated on the cache
+        /// <inheritdoc/>
         public event EventHandler<DataCacheEventArgs> Updated;
 
         /// <summary>
@@ -166,7 +165,7 @@ namespace SanteDB.Caching.Redis
         }
 
         /// <summary>
-        /// Serialize objects
+        /// Parse the REDIS hash values and de-serialize the data to an <see cref="IdentifiedData"/> instance
         /// </summary>
         private IdentifiedData DeserializeObjectFromRedis(RedisValue rvValue)
         {
@@ -303,9 +302,7 @@ namespace SanteDB.Caching.Redis
             }
         }
 
-        /// <summary>
-        /// Remove a hash key item
-        /// </summary>
+        /// <inheritdoc/>
         public void Remove(Guid key)
         {
             // We want to add
@@ -316,10 +313,7 @@ namespace SanteDB.Caching.Redis
             this.Remove(existing as IdentifiedData);
         }
 
-        /// <summary>
-        /// Remove the object from the database
-        /// </summary>
-        /// <param name="entry"></param>
+        /// <inheritdoc/>
         public void Remove(IdentifiedData entry)
         {
             if (entry == null) return;
@@ -342,9 +336,7 @@ namespace SanteDB.Caching.Redis
             }
         }
 
-        /// <summary>
-        /// Start the connection manager
-        /// </summary>
+        /// <inheritdoc/>
         public bool Start()
         {
             try
@@ -398,9 +390,7 @@ namespace SanteDB.Caching.Redis
             }
         }
 
-        /// <summary>
-        /// Stop the connection
-        /// </summary>
+        /// <inheritdoc/>
         public bool Stop()
         {
             this.Stopping?.Invoke(this, EventArgs.Empty);
@@ -409,9 +399,7 @@ namespace SanteDB.Caching.Redis
             return true;
         }
 
-        /// <summary>
-        /// Clear the cache
-        /// </summary>
+        /// <inheritdoc/>
         public void Clear()
         {
             try

@@ -23,32 +23,26 @@ using Newtonsoft.Json;
 using SanteDB.Caching.Redis.Configuration;
 using SanteDB.Core;
 using SanteDB.Core.Diagnostics;
-using SanteDB.Core.Interfaces;
 using SanteDB.Core.Services;
 using StackExchange.Redis;
 using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Xml.Serialization;
 
 namespace SanteDB.Caching.Redis
 {
     /// <summary>
-    /// REDIS ad-hoc cache
+    /// An implementation of the <see cref="IAdhocCacheService"/> which uses REDIS as the cache provider
     /// </summary>
+    /// <remarks>
+    /// <para>This implementation of the REDIS ad-hoc cache provider serializes any data passed via <see cref="Add{T}(string, T, TimeSpan?)"/> to a JSON representation, then
+    /// compresses (optional) the data and stores it in REDIS as a simple string</para>
+    /// <para>The data is stored in database 3 of the REDIS server</para>
+    /// </remarks>
     public class RedisAdhocCache : IAdhocCacheService, IDaemonService
     {
-        /// <summary>
-        /// True if service is running
-        /// </summary>
+        /// <inheritdoc/>
         public bool IsRunning => this.m_configuration != null;
 
-        /// <summary>
-        /// Gets the service name
-        /// </summary>
+        /// <inheritdoc/>
         public string ServiceName => "REDIS Ad-Hoc Caching Service";
 
         // Redis trace source
@@ -57,29 +51,19 @@ namespace SanteDB.Caching.Redis
         // Configuration
         private RedisConfigurationSection m_configuration = ApplicationServiceContext.Current.GetService<IConfigurationManager>().GetSection<RedisConfigurationSection>();
 
-        /// <summary>
-        /// Application daemon is starting
-        /// </summary>
+        /// <inheritdoc/>
         public event EventHandler Starting;
 
-        /// <summary>
-        /// Application daemon has started
-        /// </summary>
+        /// <inheritdoc/>
         public event EventHandler Started;
 
-        /// <summary>
-        /// Application is stopping
-        /// </summary>
+        /// <inheritdoc/>
         public event EventHandler Stopping;
 
-        /// <summary>
-        /// Application has stopped
-        /// </summary>
+        /// <inheritdoc/>
         public event EventHandler Stopped;
 
-        /// <summary>
-        /// Add the specified data to the cache
-        /// </summary>
+        /// <inheritdoc/>
         public void Add<T>(string key, T value, TimeSpan? timeout = null)
         {
             try
@@ -94,9 +78,7 @@ namespace SanteDB.Caching.Redis
             }
         }
 
-        /// <summary>
-        /// Gets the specified value from the cache
-        /// </summary>
+        /// <inheritdoc/>
         public T Get<T>(string key)
         {
             try
@@ -116,10 +98,7 @@ namespace SanteDB.Caching.Redis
             }
         }
 
-        /// <summary>
-        /// Start the specified service
-        /// </summary>
-        /// <returns></returns>
+        /// <inheritdoc/>
         public bool Start()
         {
             try
@@ -141,9 +120,7 @@ namespace SanteDB.Caching.Redis
             }
         }
 
-        /// <summary>
-        /// Stops the connection broker
-        /// </summary>
+        /// <inheritdoc/>
         public bool Stop()
         {
             this.Stopping?.Invoke(this, EventArgs.Empty);
@@ -152,9 +129,7 @@ namespace SanteDB.Caching.Redis
             return true;
         }
 
-        /// <summary>
-        /// Remove the object from the cache
-        /// </summary>
+        /// <inheritdoc/>
         public bool Remove(string key)
         {
             try

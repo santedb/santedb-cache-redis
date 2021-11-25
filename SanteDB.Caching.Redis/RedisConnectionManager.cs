@@ -25,16 +25,11 @@ using SanteDB.Core.Diagnostics;
 using SanteDB.Core.Services;
 using StackExchange.Redis;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace SanteDB.Caching.Redis
 {
     /// <summary>
-    /// REDIS Connection manager which keeps a multiplexor
+    /// REDIS Connection manager which keeps a multiplexor for common use in all the REDIS implementations of the various caching services.
     /// </summary>
     internal class RedisConnectionManager : IDisposable
     {
@@ -58,7 +53,7 @@ namespace SanteDB.Caching.Redis
         private readonly Tracer m_tracer = Tracer.GetTracer(typeof(RedisConnectionManager));
 
         /// <summary>
-        /// Ctor for singleton
+        /// Constructor for the singleton instance of the multiplexor
         /// </summary>
         private RedisConnectionManager()
         {
@@ -85,17 +80,17 @@ namespace SanteDB.Caching.Redis
         }
 
         /// <summary>
-        /// Connection multiplexer
+        /// Gets the connection multiplexor
         /// </summary>
         public ConnectionMultiplexer Connection => this.m_connection;
 
         /// <summary>
-        /// Get subscriber
+        /// Get the subscriber interface from the current connection
         /// </summary>
         public ISubscriber Subscriber => this.m_subscriber;
 
         /// <summary>
-        /// Gets the current instance
+        /// Gets the current instance of the connection manager (creates a singleton)
         /// </summary>
         public static RedisConnectionManager Current
         {
@@ -110,7 +105,7 @@ namespace SanteDB.Caching.Redis
         }
 
         /// <summary>
-        /// Dispose the connection
+        /// Dispose the connection and this connection manager.
         /// </summary>
         public void Dispose()
         {
