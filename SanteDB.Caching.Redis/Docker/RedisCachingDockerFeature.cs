@@ -25,6 +25,7 @@ using SanteDB.Core.Exceptions;
 using SanteDB.Docker.Core;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Xml;
 
@@ -33,6 +34,7 @@ namespace SanteDB.Caching.Redis.Docker
     /// <summary>
     /// Docker feature for the SanteDB REDIS caching provider
     /// </summary>
+    [ExcludeFromCodeCoverage]
     public class RedisCachingDockerFeature : IDockerFeature
     {
         /// <summary>
