@@ -62,10 +62,8 @@ namespace SanteDB.Caching.Redis
                 Password = this.m_configuration.Password,
                 ConnectTimeout = 1000,
                 ConnectRetry = 2,
-                ResponseTimeout = 1000,
                 SyncTimeout = 2000,
-                Ssl = false,
-                WriteBuffer = 10240
+                Ssl = false
             };
 
             foreach (var itm in this.m_configuration.Servers)
