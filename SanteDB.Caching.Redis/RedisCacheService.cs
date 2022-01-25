@@ -197,7 +197,7 @@ namespace SanteDB.Caching.Redis
                         return;
                     }
 
-                    foreach (var tag in taggable.Tags.Where(o => o.TagKey.StartsWith("$")).ToArray())
+                    foreach (var tag in taggable.Tags.Where(o => o.TagKey.StartsWith("$") && o.TagKey != SanteDBConstants.DcdrRefetchTag).ToArray())
                     {
                         taggable.RemoveTag(tag.TagKey);
                     }
@@ -291,7 +291,6 @@ namespace SanteDB.Caching.Redis
             RedisConnectionManager.Current.Connection.GetSubscriber().Publish("oiz.events", $"DELETE http://{Environment.MachineName}/cache/{entry.Key}");
         }
 
-
         /// <summary>
         /// Ensure cache consistency
         /// </summary>
@@ -323,7 +322,7 @@ namespace SanteDB.Caching.Redis
                                 if (value is IList list)
                                 {
                                     var exist = list.OfType<IdentifiedData>().FirstOrDefault(o => o.SemanticEquals(data));
-                                    if (exist != null && (data.BatchOperation == Core.Model.DataTypes.BatchOperationType.Delete || !exist.Equals(data)))
+                                    if (exist != null)
                                     {
                                         list.Remove(exist);
                                     }
@@ -333,6 +332,11 @@ namespace SanteDB.Caching.Redis
                                         list.Add(data);
                                 }
                             }
+
+                            if (host is ITaggable ite)
+                            {
+                                ite.AddTag(SanteDBConstants.DcdrRefetchTag, "true");
+                            }
                             this.Add(host as IdentifiedData); // refresh 
 
                         }
@@ -340,7 +344,6 @@ namespace SanteDB.Caching.Redis
                     break;
             }
         }
-
 
         /// <inheritdoc/>
         public bool Start()
