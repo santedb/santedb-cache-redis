@@ -24,11 +24,13 @@ using SanteDB.Core;
 using SanteDB.Core.Diagnostics;
 using SanteDB.Core.Model;
 using SanteDB.Core.Model.Attributes;
+using SanteDB.Core.Model.Collection;
 using SanteDB.Core.Model.Interfaces;
 using SanteDB.Core.Model.Serialization;
 using SanteDB.Core.Services;
 using StackExchange.Redis;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -175,13 +177,13 @@ namespace SanteDB.Caching.Redis
         {
             try
             {
+                this.EnsureCacheConsistency(data);
+
                 // We want to add only those when the connection is present
                 if (RedisConnectionManager.Current.Connection == null || data == null || !data.Key.HasValue ||
                     (data as BaseEntityData)?.ObsoletionTime.HasValue == true ||
                     this.m_nonCached.Contains(data.GetType()))
                 {
-                    this.m_tracer.TraceVerbose("Skipping caching of {0} (OBS:{1}, NCC:{2})",
-                        data, (data as BaseEntityData)?.ObsoletionTime.HasValue == true, this.m_nonCached.Contains(data.GetType()));
                     return;
                 }
 
@@ -195,7 +197,7 @@ namespace SanteDB.Caching.Redis
                         return;
                     }
 
-                    foreach (var tag in taggable.Tags.Where(o => o.TagKey.StartsWith("$")).ToArray())
+                    foreach (var tag in taggable.Tags.Where(o => o.TagKey.StartsWith("$") && o.TagKey != SanteDBConstants.DcdrRefetchTag).ToArray())
                     {
                         taggable.RemoveTag(tag.TagKey);
                     }
@@ -209,17 +211,6 @@ namespace SanteDB.Caching.Redis
 
                 redisDb.HashSet(data.Key.Value.ToString(), this.SerializeObject(data), CommandFlags.FireAndForget);
                 redisDb.KeyExpire(data.Key.Value.ToString(), this.m_configuration.TTL, CommandFlags.FireAndForget);
-
-                // If this is a relationship class we remove the source entity from the cache
-                if (data is ITargetedAssociation targetedAssociation)
-                {
-                    this.Remove(targetedAssociation.SourceEntityKey.GetValueOrDefault());
-                    this.Remove(targetedAssociation.TargetEntityKey.GetValueOrDefault());
-                }
-                else if (data is ISimpleAssociation simpleAssociation)
-                {
-                    this.Remove(simpleAssociation.SourceEntityKey.GetValueOrDefault());
-                }
 
                 //this.EnsureCacheConsistency(new DataCacheEventArgs(data));
                 if (this.m_configuration.PublishChanges)
@@ -295,16 +286,63 @@ namespace SanteDB.Caching.Redis
 
             var redisDb = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.CacheDatabaseId);
             redisDb.KeyDelete(entry.Key.ToString(), CommandFlags.FireAndForget);
-            //this.EnsureCacheConsistency(new DataCacheEventArgs(existing), true);
-            if (entry is ISimpleAssociation sa)
-            {
-                this.Remove(sa.SourceEntityKey.GetValueOrDefault());
-                if (sa is ITargetedAssociation ta)
-                {
-                    this.Remove(ta.TargetEntityKey.GetValueOrDefault());
-                }
-            }
+            entry.BatchOperation = Core.Model.DataTypes.BatchOperationType.Delete;
+            this.EnsureCacheConsistency(entry);
             RedisConnectionManager.Current.Connection.GetSubscriber().Publish("oiz.events", $"DELETE http://{Environment.MachineName}/cache/{entry.Key}");
+        }
+
+        /// <summary>
+        /// Ensure cache consistency
+        /// </summary>
+        /// <remarks>This method ensures that referenced objects (objects which are stored or updated which
+        /// are associative in nature) have their source and target objects evicted from cache.</remarks>
+        private void EnsureCacheConsistency(IdentifiedData data)
+        {
+            // If it is a bundle we want to process the bundle
+            switch (data)
+            {
+                case Bundle bundle:
+                    foreach (var itm in bundle.Item)
+                    {
+                        if (itm.BatchOperation == Core.Model.DataTypes.BatchOperationType.Delete)
+                            this.Remove(itm);
+                        else
+                            this.Add(itm);
+                    }
+                    break;
+                case ISimpleAssociation sa:
+                    if (data.BatchOperation != Core.Model.DataTypes.BatchOperationType.Auto)
+                    {
+                        var host = this.GetCacheItem(sa.SourceEntityKey.GetValueOrDefault()); // Cache remove the source item
+                        if (host != null) // hosting type is cached
+                        {
+                            foreach (var prop in host.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(o => o.PropertyType.StripGeneric() == data.GetType()))
+                            {
+                                var value = host.LoadProperty(prop.Name) as IList;
+                                if (value is IList list)
+                                {
+                                    var exist = list.OfType<IdentifiedData>().FirstOrDefault(o => o.SemanticEquals(data));
+                                    if (exist != null)
+                                    {
+                                        list.Remove(exist);
+                                    }
+
+                                    // Re-add
+                                    if (data.BatchOperation != Core.Model.DataTypes.BatchOperationType.Delete)
+                                        list.Add(data);
+                                }
+                            }
+
+                            if (host is ITaggable ite)
+                            {
+                                ite.AddTag(SanteDBConstants.DcdrRefetchTag, "true");
+                            }
+                            this.Add(host as IdentifiedData); // refresh 
+
+                        }
+                    }
+                    break;
+            }
         }
 
         /// <inheritdoc/>
