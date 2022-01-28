@@ -19,6 +19,7 @@
  * Date: 2021-8-5
  */
 
+using Newtonsoft.Json;
 using SanteDB.Caching.Redis.Configuration;
 using SanteDB.Core;
 using SanteDB.Core.Diagnostics;
@@ -117,23 +118,25 @@ namespace SanteDB.Caching.Redis
         private HashEntry[] SerializeObject(IdentifiedData data)
         {
             data.BatchOperation = Core.Model.DataTypes.BatchOperationType.Auto;
-            XmlSerializer xsz = XmlModelSerializerFactory.Current.CreateSerializer(data.GetType());
             HashEntry[] retVal = new HashEntry[3];
             retVal[0] = new HashEntry(FIELD_TYPE, data.GetType().AssemblyQualifiedName);
             retVal[1] = new HashEntry(FIELD_STATE, (int)data.LoadState);
-
-            using (var ms = new MemoryStream())
+            if (this.m_configuration.Compress)
             {
-                if (this.m_configuration.Compress)
+                using (var ms = new MemoryStream())
                 {
                     using (var gzs = new GZipStream(ms, CompressionLevel.Fastest))
-                        xsz.Serialize(gzs, data);
+                    using (var jw = new StreamWriter(gzs))
+                    {
+                        jw.Write(JsonConvert.SerializeObject(data));
+                    }
+                    retVal[2] = new HashEntry(FIELD_VALUE, ms.ToArray());
                 }
-                else
-                {
-                    xsz.Serialize(ms, data);
-                }
-                retVal[2] = new HashEntry(FIELD_VALUE, ms.ToArray());
+
+            }
+            else
+            {
+                retVal[2] = new HashEntry(FIELD_VALUE, JsonConvert.SerializeObject(data));
             }
             return retVal;
         }
@@ -151,25 +154,22 @@ namespace SanteDB.Caching.Redis
             Type type = Type.GetType((String)rvType);
             LoadState ls = (LoadState)(int)rvState;
 
-            // Find serializer
-            XmlSerializer xsz = XmlModelSerializerFactory.Current.CreateSerializer(type);
-            using (var sr = new MemoryStream((byte[])rvValue))
+            if (this.m_configuration.Compress)
             {
-                IdentifiedData retVal = null;
-                if (this.m_configuration.Compress)
+                using (var ms = new MemoryStream(rvValue))
                 {
-                    using (var gzs = new GZipStream(sr, CompressionMode.Decompress))
+                    using (var gzs = new GZipStream(ms, CompressionMode.Decompress))
+                    using (var jw = new StreamReader(gzs))
                     {
-                        retVal = xsz.Deserialize(gzs) as IdentifiedData;
+                        return JsonConvert.DeserializeObject(jw.ReadToEnd(), type) as IdentifiedData;
                     }
                 }
-                else
-                {
-                    retVal = xsz.Deserialize(sr) as IdentifiedData;
-                }
-                retVal.LoadState = ls;
-                return retVal;
             }
+            else
+            {
+                return JsonConvert.DeserializeObject(rvValue, type) as IdentifiedData;
+            }
+
         }
 
         /// <inheritdoc/>
