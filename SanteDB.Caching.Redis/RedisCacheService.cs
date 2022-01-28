@@ -253,7 +253,6 @@ namespace SanteDB.Caching.Redis
             catch (Exception e)
             {
                 this.m_tracer.TraceWarning("REDIS CACHE ERROR (FETCHING SKIPPED): {0}", e);
-                RedisConnectionManager.Current.Dispose();
 
                 return null;
             }
@@ -290,6 +289,7 @@ namespace SanteDB.Caching.Redis
             this.EnsureCacheConsistency(entry);
             RedisConnectionManager.Current.Connection.GetSubscriber().Publish("oiz.events", $"DELETE http://{Environment.MachineName}/cache/{entry.Key}");
         }
+
 
         /// <summary>
         /// Ensure cache consistency
