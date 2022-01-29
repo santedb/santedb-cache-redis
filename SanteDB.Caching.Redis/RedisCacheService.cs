@@ -316,7 +316,7 @@ namespace SanteDB.Caching.Redis
                         var host = this.GetCacheItem(sa.SourceEntityKey.GetValueOrDefault()); // Cache remove the source item
                         if (host != null) // hosting type is cached
                         {
-                            foreach (var prop in host.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(o => o.PropertyType.StripGeneric() == data.GetType()))
+                            foreach (var prop in host.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(o => o.PropertyType.StripGeneric().IsAssignableFrom(data.GetType())))
                             {
                                 var value = host.LoadProperty(prop.Name) as IList;
                                 if (value is IList list)
