@@ -252,7 +252,7 @@ namespace SanteDB.Caching.Redis
             }
             catch (Exception e)
             {
-                this.m_tracer.TraceWarning("REDIS CACHE ERROR (FETCHING SKIPPED): {0}", e);
+                this.m_tracer.TraceWarning("REDIS CACHE ERROR (FETCHING SKIPPED): {0}", e.Message);
 
                 return null;
             }
