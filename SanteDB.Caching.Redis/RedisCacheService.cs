@@ -227,9 +227,10 @@ namespace SanteDB.Caching.Redis
                     //}
                 }
             }
+            catch (ObjectDisposedException) { }
             catch (Exception e)
             {
-                this.m_tracer.TraceError("REDIS CACHE ERROR (CACHING SKIPPED): {0}", e);
+                this.m_tracer.TraceWarning("REDIS CACHE ERROR (CACHING SKIPPED): {0}", e.Message);
             }
         }
 
@@ -250,6 +251,7 @@ namespace SanteDB.Caching.Redis
                     return null;
                 return this.DeserializeObject(hdata[FIELD_TYPE], hdata[FIELD_STATE], hdata[FIELD_VALUE]);
             }
+            catch(ObjectDisposedException) { return null; }
             catch (Exception e)
             {
                 this.m_tracer.TraceWarning("REDIS CACHE ERROR (FETCHING SKIPPED): {0}", e.Message);
@@ -282,12 +284,19 @@ namespace SanteDB.Caching.Redis
         public void Remove(IdentifiedData entry)
         {
             if (entry == null) return;
-
-            var redisDb = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.CacheDatabaseId);
-            redisDb.KeyDelete(entry.Key.ToString(), CommandFlags.FireAndForget);
-            entry.BatchOperation = Core.Model.DataTypes.BatchOperationType.Delete;
-            this.EnsureCacheConsistency(entry);
-            RedisConnectionManager.Current.Connection.GetSubscriber().Publish("oiz.events", $"DELETE http://{Environment.MachineName}/cache/{entry.Key}");
+            try
+            {
+                var redisDb = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.CacheDatabaseId);
+                redisDb.KeyDelete(entry.Key.ToString(), CommandFlags.FireAndForget);
+                entry.BatchOperation = Core.Model.DataTypes.BatchOperationType.Delete;
+                this.EnsureCacheConsistency(entry);
+                RedisConnectionManager.Current.Connection.GetSubscriber().Publish("oiz.events", $"DELETE http://{Environment.MachineName}/cache/{entry.Key}");
+            }
+            catch(ObjectDisposedException) { }
+            catch(Exception e)
+            {
+                this.m_tracer.TraceWarning("Error removing from REDIS - skipping - {0}", e.Message);
+            }
         }
 
 
