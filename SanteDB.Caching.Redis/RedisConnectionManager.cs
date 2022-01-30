@@ -63,7 +63,8 @@ namespace SanteDB.Caching.Redis
                 ConnectTimeout = 1000,
                 ConnectRetry = 2,
                 SyncTimeout = 2000,
-                Ssl = false
+                Ssl = false,
+                
             };
 
             foreach (var itm in this.m_configuration.Servers)
@@ -73,7 +74,9 @@ namespace SanteDB.Caching.Redis
                 configuration.EndPoints.Add(epData[0], int.Parse(epData[1]));
             }
 
+            
             this.m_connection = ConnectionMultiplexer.Connect(configuration);
+            
             this.m_subscriber = this.m_connection.GetSubscriber();
         }
 

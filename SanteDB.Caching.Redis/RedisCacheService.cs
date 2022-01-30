@@ -19,6 +19,7 @@
  * Date: 2021-8-5
  */
 
+using Newtonsoft.Json;
 using SanteDB.Caching.Redis.Configuration;
 using SanteDB.Core;
 using SanteDB.Core.Diagnostics;
@@ -117,23 +118,25 @@ namespace SanteDB.Caching.Redis
         private HashEntry[] SerializeObject(IdentifiedData data)
         {
             data.BatchOperation = Core.Model.DataTypes.BatchOperationType.Auto;
-            XmlSerializer xsz = XmlModelSerializerFactory.Current.CreateSerializer(data.GetType());
             HashEntry[] retVal = new HashEntry[3];
             retVal[0] = new HashEntry(FIELD_TYPE, data.GetType().AssemblyQualifiedName);
             retVal[1] = new HashEntry(FIELD_STATE, (int)data.LoadState);
-
-            using (var ms = new MemoryStream())
+            if (this.m_configuration.Compress)
             {
-                if (this.m_configuration.Compress)
+                using (var ms = new MemoryStream())
                 {
                     using (var gzs = new GZipStream(ms, CompressionLevel.Fastest))
-                        xsz.Serialize(gzs, data);
+                    using (var jw = new StreamWriter(gzs))
+                    {
+                        jw.Write(JsonConvert.SerializeObject(data));
+                    }
+                    retVal[2] = new HashEntry(FIELD_VALUE, ms.ToArray());
                 }
-                else
-                {
-                    xsz.Serialize(ms, data);
-                }
-                retVal[2] = new HashEntry(FIELD_VALUE, ms.ToArray());
+
+            }
+            else
+            {
+                retVal[2] = new HashEntry(FIELD_VALUE, JsonConvert.SerializeObject(data));
             }
             return retVal;
         }
@@ -151,25 +154,22 @@ namespace SanteDB.Caching.Redis
             Type type = Type.GetType((String)rvType);
             LoadState ls = (LoadState)(int)rvState;
 
-            // Find serializer
-            XmlSerializer xsz = XmlModelSerializerFactory.Current.CreateSerializer(type);
-            using (var sr = new MemoryStream((byte[])rvValue))
+            if (this.m_configuration.Compress)
             {
-                IdentifiedData retVal = null;
-                if (this.m_configuration.Compress)
+                using (var ms = new MemoryStream(rvValue))
                 {
-                    using (var gzs = new GZipStream(sr, CompressionMode.Decompress))
+                    using (var gzs = new GZipStream(ms, CompressionMode.Decompress))
+                    using (var jw = new StreamReader(gzs))
                     {
-                        retVal = xsz.Deserialize(gzs) as IdentifiedData;
+                        return JsonConvert.DeserializeObject(jw.ReadToEnd(), type) as IdentifiedData;
                     }
                 }
-                else
-                {
-                    retVal = xsz.Deserialize(sr) as IdentifiedData;
-                }
-                retVal.LoadState = ls;
-                return retVal;
             }
+            else
+            {
+                return JsonConvert.DeserializeObject(rvValue, type) as IdentifiedData;
+            }
+
         }
 
         /// <inheritdoc/>
@@ -227,9 +227,10 @@ namespace SanteDB.Caching.Redis
                     //}
                 }
             }
+            catch (ObjectDisposedException) { }
             catch (Exception e)
             {
-                this.m_tracer.TraceError("REDIS CACHE ERROR (CACHING SKIPPED): {0}", e);
+                this.m_tracer.TraceWarning("REDIS CACHE ERROR (CACHING SKIPPED): {0}", e.Message);
             }
         }
 
@@ -250,10 +251,10 @@ namespace SanteDB.Caching.Redis
                     return null;
                 return this.DeserializeObject(hdata[FIELD_TYPE], hdata[FIELD_STATE], hdata[FIELD_VALUE]);
             }
+            catch(ObjectDisposedException) { return null; }
             catch (Exception e)
             {
-                this.m_tracer.TraceWarning("REDIS CACHE ERROR (FETCHING SKIPPED): {0}", e);
-                RedisConnectionManager.Current.Dispose();
+                this.m_tracer.TraceWarning("REDIS CACHE ERROR (FETCHING SKIPPED): {0}", e.Message);
 
                 return null;
             }
@@ -283,13 +284,21 @@ namespace SanteDB.Caching.Redis
         public void Remove(IdentifiedData entry)
         {
             if (entry == null) return;
-
-            var redisDb = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.CacheDatabaseId);
-            redisDb.KeyDelete(entry.Key.ToString(), CommandFlags.FireAndForget);
-            entry.BatchOperation = Core.Model.DataTypes.BatchOperationType.Delete;
-            this.EnsureCacheConsistency(entry);
-            RedisConnectionManager.Current.Connection.GetSubscriber().Publish("oiz.events", $"DELETE http://{Environment.MachineName}/cache/{entry.Key}");
+            try
+            {
+                var redisDb = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.CacheDatabaseId);
+                redisDb.KeyDelete(entry.Key.ToString(), CommandFlags.FireAndForget);
+                entry.BatchOperation = Core.Model.DataTypes.BatchOperationType.Delete;
+                this.EnsureCacheConsistency(entry);
+                RedisConnectionManager.Current.Connection.GetSubscriber().Publish("oiz.events", $"DELETE http://{Environment.MachineName}/cache/{entry.Key}");
+            }
+            catch(ObjectDisposedException) { }
+            catch(Exception e)
+            {
+                this.m_tracer.TraceWarning("Error removing from REDIS - skipping - {0}", e.Message);
+            }
         }
+
 
         /// <summary>
         /// Ensure cache consistency
@@ -316,7 +325,7 @@ namespace SanteDB.Caching.Redis
                         var host = this.GetCacheItem(sa.SourceEntityKey.GetValueOrDefault()); // Cache remove the source item
                         if (host != null) // hosting type is cached
                         {
-                            foreach (var prop in host.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(o => o.PropertyType.StripGeneric() == data.GetType()))
+                            foreach (var prop in host.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(o => o.PropertyType.StripGeneric().IsAssignableFrom(data.GetType())))
                             {
                                 var value = host.LoadProperty(prop.Name) as IList;
                                 if (value is IList list)
