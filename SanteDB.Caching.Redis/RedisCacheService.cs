@@ -249,7 +249,9 @@ namespace SanteDB.Caching.Redis
                 var hdata = redisDb.HashGetAll(key.ToString()).ToDictionary(o => (String)o.Name, o => o.Value);
                 if (hdata.Count == 0)
                     return null;
-                return this.DeserializeObject(hdata[FIELD_TYPE], hdata[FIELD_STATE], hdata[FIELD_VALUE]);
+                var retVal = this.DeserializeObject(hdata[FIELD_TYPE], hdata[FIELD_STATE], hdata[FIELD_VALUE]);
+                retVal.BatchOperation = Core.Model.DataTypes.BatchOperationType.Auto;
+                return retVal;
             }
             catch(ObjectDisposedException) { return null; }
             catch (Exception e)
@@ -307,10 +309,13 @@ namespace SanteDB.Caching.Redis
         /// are associative in nature) have their source and target objects evicted from cache.</remarks>
         private void EnsureCacheConsistency(IdentifiedData data)
         {
-            // If it is a bundle we want to process the bundle
+            // No data - no consistency needed
+            if (data == null) { return; }
+
+
             switch (data)
             {
-                case Bundle bundle:
+                case Bundle bundle: // If it is a bundle we want to process the bundle
                     foreach (var itm in bundle.Item)
                     {
                         if (itm.BatchOperation == Core.Model.DataTypes.BatchOperationType.Delete)
@@ -346,12 +351,13 @@ namespace SanteDB.Caching.Redis
                             {
                                 ite.AddTag(SanteDBConstants.DcdrRefetchTag, "true");
                             }
-                            this.Add(host as IdentifiedData); // refresh 
+                            this.Add(host); // refresh 
 
                         }
                     }
                     break;
             }
+            data.BatchOperation = Core.Model.DataTypes.BatchOperationType.Auto;
         }
 
         /// <inheritdoc/>
