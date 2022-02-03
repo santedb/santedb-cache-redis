@@ -25,12 +25,14 @@ using SanteDB.Core.Diagnostics;
 using SanteDB.Core.Services;
 using StackExchange.Redis;
 using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace SanteDB.Caching.Redis
 {
     /// <summary>
     /// REDIS Connection manager which keeps a multiplexor for common use in all the REDIS implementations of the various caching services.
     /// </summary>
+    [ExcludeFromCodeCoverage] // Unit testing on REDIS is not possible in unit tests
     internal class RedisConnectionManager : IDisposable
     {
         /// <summary>

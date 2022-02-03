@@ -26,6 +26,7 @@ using SanteDB.Core.Diagnostics;
 using SanteDB.Core.Services;
 using StackExchange.Redis;
 using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace SanteDB.Caching.Redis
 {
@@ -37,6 +38,7 @@ namespace SanteDB.Caching.Redis
     /// compresses (optional) the data and stores it in REDIS as a simple string</para>
     /// <para>The data is stored in database 3 of the REDIS server</para>
     /// </remarks>
+    [ExcludeFromCodeCoverage] // Unit testing on REDIS is not possible in unit tests
     public class RedisAdhocCache : IAdhocCacheService, IDaemonService
     {
         /// <inheritdoc/>

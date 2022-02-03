@@ -30,6 +30,7 @@ using SanteDB.Core.Services;
 using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -51,13 +52,14 @@ namespace SanteDB.Caching.Redis
     /// <para>The caching data is stored in database 1 of the REDIS server.</para>
     /// </remarks>
     [ServiceProvider("REDIS Data Caching Service", Configuration = typeof(RedisConfigurationSection))]
+    [ExcludeFromCodeCoverage] // Unit testing on REDIS is not possible in unit tests
     public class RedisCacheService : IDataCachingService, IDaemonService
     {
         // The field in the REDIS cache for value
         private const string FIELD_VALUE = "value";
 
         // The field in the REDIS cache for type
-        private const string FIELD_TYPE = "type";
+        private const string FIELD_LOAD = "load";
 
         /// <inheritdoc/>
         public string ServiceName => "REDIS Data Caching Service";
@@ -169,7 +171,7 @@ namespace SanteDB.Caching.Redis
         /// </summary>
         private IdentifiedData DeserializeObjectFromRedis(RedisValue rvValue)
         {
-            if (!rvValue.HasValue) return null;
+            if (rvValue.IsNullOrEmpty) return null;
 
             // Find serializer
             using (var sr = new MemoryStream((byte[])rvValue))
@@ -228,7 +230,11 @@ namespace SanteDB.Caching.Redis
                 var redisDb = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.CacheDatabaseId);
                 var cacheKey = data.Key.Value.ToString();
 
-                redisDb.StringSet(cacheKey, this.SerializeToRedisValue(data), expiry: this.m_configuration.TTL, flags: CommandFlags.FireAndForget);
+                redisDb.HashSet(cacheKey, new HashEntry[] {
+                    new HashEntry(FIELD_VALUE, this.SerializeToRedisValue(data)),
+                    new HashEntry(FIELD_LOAD, (int?)data.GetAnnotations<LoadMode>().FirstOrDefault())
+                });
+                redisDb.KeyExpire(cacheKey, expiry: this.m_configuration.TTL, flags: CommandFlags.FireAndForget);
 
                 //this.EnsureCacheConsistency(new DataCacheEventArgs(data));
                 if (this.m_configuration.PublishChanges)
@@ -238,10 +244,7 @@ namespace SanteDB.Caching.Redis
                     this.m_tracer.TraceVerbose("HashSet {0} (EXIST: {1}; @: {2})", data, existing, new System.Diagnostics.StackTrace(true).GetFrame(1));
 #endif
 
-                    if (existing)
-                        RedisConnectionManager.Current.Connection.GetSubscriber().Publish("oiz.events", $"PUT http://{Environment.MachineName}/cache/{cacheKey}");
-                    else
-                        RedisConnectionManager.Current.Connection.GetSubscriber().Publish("oiz.events", $"POST http://{Environment.MachineName}/cache/{cacheKey}");
+                    RedisConnectionManager.Current.Connection.GetSubscriber().Publish("oiz.events", $"POST http://{Environment.MachineName}/cache/{cacheKey}");
                     //}
                 }
             }
@@ -286,12 +289,21 @@ namespace SanteDB.Caching.Redis
                 var cacheKey = key.ToString();
 
                 var redisDb = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.CacheDatabaseId);
-                redisDb.KeyExpire(cacheKey, this.m_configuration.TTL, CommandFlags.FireAndForget);
-                var hdata = redisDb.StringGet(cacheKey);
-                if (!hdata.HasValue)
+                if (redisDb.KeyExpire(cacheKey, this.m_configuration.TTL))
+                {
+                    var hdata = redisDb.HashGet(cacheKey, FIELD_VALUE);
+                    var retVal = this.DeserializeObjectFromRedis(hdata);
+                    var loadState = redisDb.HashGet(cacheKey, FIELD_LOAD);
+                    if (loadState.HasValue) {
+                        retVal.AddAnnotation((LoadMode)(int)loadState);
+                    }
+                    return retVal;
+                }
+                else
+                {
                     return null;
+                }
 
-                return this.DeserializeObjectFromRedis(hdata);
             }
             catch (Exception e)
             {

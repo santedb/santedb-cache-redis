@@ -26,6 +26,7 @@ using SanteDB.Core.Services;
 using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 namespace SanteDB.Caching.Redis
@@ -38,6 +39,7 @@ namespace SanteDB.Caching.Redis
     /// is stored in database 2 of the REDIS server.</para>
     /// </remarks>
     [ServiceProvider("REDIS Query Persistence Service")]
+    [ExcludeFromCodeCoverage] // Unit testing on REDIS is not possible in unit tests
     public class RedisQueryPersistenceService : IQueryPersistenceService, IDaemonService
     {
         /// <inheritdoc/>

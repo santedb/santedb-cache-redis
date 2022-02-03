@@ -22,6 +22,7 @@
 using SanteDB.Core.Configuration;
 using System;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Xml;
 using System.Xml.Serialization;
 
@@ -31,6 +32,7 @@ namespace SanteDB.Caching.Redis.Configuration
     /// Configuration section that is used to control the REDIS caching
     /// </summary>
     [XmlType(nameof(RedisConfigurationSection), Namespace = "http://santedb.org/configuration")]
+    [ExcludeFromCodeCoverage] // Unit testing on REDIS is not possible in unit tests
     public class RedisConfigurationSection : IConfigurationSection
     {
         /// <summary>
