@@ -19,16 +19,19 @@
  * Date: 2021-8-5
  */
 
+using Newtonsoft.Json;
 using SanteDB.Caching.Redis.Configuration;
 using SanteDB.Core;
 using SanteDB.Core.Diagnostics;
 using SanteDB.Core.Model;
 using SanteDB.Core.Model.Attributes;
+using SanteDB.Core.Model.Collection;
 using SanteDB.Core.Model.Interfaces;
 using SanteDB.Core.Model.Serialization;
 using SanteDB.Core.Services;
 using StackExchange.Redis;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
@@ -201,13 +204,13 @@ namespace SanteDB.Caching.Redis
         {
             try
             {
+                this.EnsureCacheConsistency(data);
+
                 // We want to add only those when the connection is present
                 if (RedisConnectionManager.Current.Connection == null || data == null || !data.Key.HasValue ||
                     (data as BaseEntityData)?.ObsoletionTime.HasValue == true ||
                     this.m_nonCached.Contains(data.GetType()))
                 {
-                    this.m_tracer.TraceVerbose("Skipping caching of {0} (OBS:{1}, NCC:{2})",
-                        data, (data as BaseEntityData)?.ObsoletionTime.HasValue == true, this.m_nonCached.Contains(data.GetType()));
                     return;
                 }
 
@@ -221,7 +224,7 @@ namespace SanteDB.Caching.Redis
                         return;
                     }
 
-                    foreach (var tag in taggable.Tags.Where(o => o.TagKey.StartsWith("$")).ToArray())
+                    foreach (var tag in taggable.Tags.Where(o => o.TagKey.StartsWith("$") && o.TagKey != SanteDBConstants.DcdrRefetchTag).ToArray())
                     {
                         taggable.RemoveTag(tag.TagKey);
                     }
@@ -248,9 +251,10 @@ namespace SanteDB.Caching.Redis
                     //}
                 }
             }
+            catch (ObjectDisposedException) { }
             catch (Exception e)
             {
-                this.m_tracer.TraceError("REDIS CACHE ERROR (CACHING SKIPPED): {0}", e);
+                this.m_tracer.TraceWarning("REDIS CACHE ERROR (CACHING SKIPPED): {0}", e.Message);
             }
         }
 
@@ -305,10 +309,10 @@ namespace SanteDB.Caching.Redis
                 }
 
             }
+            catch(ObjectDisposedException) { return null; }
             catch (Exception e)
             {
-                this.m_tracer.TraceWarning("REDIS CACHE ERROR (FETCHING SKIPPED): {0}", e);
-                RedisConnectionManager.Current.Dispose();
+                this.m_tracer.TraceWarning("REDIS CACHE ERROR (FETCHING SKIPPED): {0}", e.Message);
 
                 return null;
             }
@@ -329,23 +333,78 @@ namespace SanteDB.Caching.Redis
         public void Remove(IdentifiedData entry)
         {
             if (entry == null) return;
-
-            var redisDb = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.CacheDatabaseId);
-            redisDb.KeyDelete(entry.Key.ToString(), CommandFlags.FireAndForget);
-            //this.EnsureCacheConsistency(new DataCacheEventArgs(existing), true);
-            if (entry is ISimpleAssociation sa)
+            try
             {
-                this.Remove(sa.SourceEntityKey.GetValueOrDefault());
-                if (sa is ITargetedAssociation ta)
-                {
-                    this.Remove(ta.TargetEntityKey.GetValueOrDefault());
-                }
-            }
-
-            if (this.m_configuration.PublishChanges)
-            {
+                var redisDb = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.CacheDatabaseId);
+                redisDb.KeyDelete(entry.Key.ToString(), CommandFlags.FireAndForget);
+                entry.BatchOperation = Core.Model.DataTypes.BatchOperationType.Delete;
+                this.EnsureCacheConsistency(entry);
                 RedisConnectionManager.Current.Connection.GetSubscriber().Publish("oiz.events", $"DELETE http://{Environment.MachineName}/cache/{entry.Key}");
             }
+            catch(ObjectDisposedException) { }
+            catch(Exception e)
+            {
+                this.m_tracer.TraceWarning("Error removing from REDIS - skipping - {0}", e.Message);
+            }
+        }
+
+
+        /// <summary>
+        /// Ensure cache consistency
+        /// </summary>
+        /// <remarks>This method ensures that referenced objects (objects which are stored or updated which
+        /// are associative in nature) have their source and target objects evicted from cache.</remarks>
+        private void EnsureCacheConsistency(IdentifiedData data)
+        {
+            // No data - no consistency needed
+            if (data == null) { return; }
+
+
+            switch (data)
+            {
+                case Bundle bundle: // If it is a bundle we want to process the bundle
+                    foreach (var itm in bundle.Item)
+                    {
+                        if (itm.BatchOperation == Core.Model.DataTypes.BatchOperationType.Delete)
+                            this.Remove(itm);
+                        else
+                            this.Add(itm);
+                    }
+                    break;
+                case ISimpleAssociation sa:
+                    if (data.BatchOperation != Core.Model.DataTypes.BatchOperationType.Auto)
+                    {
+                        var host = this.GetCacheItem(sa.SourceEntityKey.GetValueOrDefault()); // Cache remove the source item
+                        if (host != null) // hosting type is cached
+                        {
+                            foreach (var prop in host.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance).Where(o => o.PropertyType.StripGeneric().IsAssignableFrom(data.GetType())))
+                            {
+                                var value = host.LoadProperty(prop.Name) as IList;
+                                if (value is IList list)
+                                {
+                                    var exist = list.OfType<IdentifiedData>().FirstOrDefault(o => o.SemanticEquals(data));
+                                    if (exist != null)
+                                    {
+                                        list.Remove(exist);
+                                    }
+
+                                    // Re-add
+                                    if (data.BatchOperation != Core.Model.DataTypes.BatchOperationType.Delete)
+                                        list.Add(data);
+                                }
+                            }
+
+                            if (host is ITaggable ite)
+                            {
+                                ite.AddTag(SanteDBConstants.DcdrRefetchTag, "true");
+                            }
+                            this.Add(host); // refresh 
+
+                        }
+                    }
+                    break;
+            }
+            data.BatchOperation = Core.Model.DataTypes.BatchOperationType.Auto;
         }
 
         /// <inheritdoc/>
