@@ -186,6 +186,11 @@ namespace SanteDB.Caching.Redis
                 {
                     return;
                 }
+                else if (data.GetType().GetCustomAttribute<NonCachedAttribute>() != null)
+                {
+                    this.m_nonCached.Add(data.GetType());
+                    return;
+                }
 
                 // HACK: Remove all non-transient tags since the persistence layer doesn't persist them
                 if (data is ITaggable taggable)
@@ -197,10 +202,7 @@ namespace SanteDB.Caching.Redis
                         return;
                     }
 
-                    foreach (var tag in taggable.Tags.Where(o => o.TagKey.StartsWith("$") && o.TagKey != SanteDBConstants.DcdrRefetchTag).ToArray())
-                    {
-                        taggable.RemoveTag(tag.TagKey);
-                    }
+                    taggable.RemoveAllTags(o => o.TagKey.StartsWith("$") || o.TagKey != SanteDBConstants.DcdrRefetchTag);
                 }
                 // Only add data which is an entity, act, or relationship
                 //if (data is Act || data is Entity || data is ActRelationship || data is ActParticipation || data is EntityRelationship || data is Concept)

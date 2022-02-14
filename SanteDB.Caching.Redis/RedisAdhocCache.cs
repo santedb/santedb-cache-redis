@@ -144,5 +144,21 @@ namespace SanteDB.Caching.Redis
                 return false;
             }
         }
+
+        /// <inheritdoc/>
+        public bool Exists(string key)
+        {
+            try
+            {
+                var db = RedisConnectionManager.Current.Connection?.GetDatabase(RedisCacheConstants.AdhocCacheDatabaseId);
+                return db?.KeyExists(key) == true;
+            }
+            catch (Exception e)
+            {
+                this.m_tracer.TraceError("Error exists {0} from cache {1}", key, e.Message);
+                //throw new Exception($"Error fetching {key} ({typeof(T).FullName}) from cache", e);
+                return false;
+            }
+        }
     }
 }
