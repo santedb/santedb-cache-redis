@@ -486,7 +486,7 @@ namespace SanteDB.Caching.Redis
         /// <summary>
         /// Returns tru if the cache contains the specified id
         /// </summary>
-        public bool Exists<T>(Guid id)
+        public bool Exists<T>(Guid id) where T : IdentifiedData
         {
             try
             {
