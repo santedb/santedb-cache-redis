@@ -147,19 +147,18 @@ namespace SanteDB.Caching.Redis
             }
         }
 
-        /// <summary>
-        /// Return true if the cache entry exists
-        /// </summary>
+        /// <inheritdoc/>
         public bool Exists(string key)
         {
             try
             {
                 var db = RedisConnectionManager.Current.Connection?.GetDatabase(RedisCacheConstants.AdhocCacheDatabaseId);
-                return db.KeyExists(key);
+                return db?.KeyExists(key) == true;
             }
             catch (Exception e)
             {
-                this.m_tracer.TraceError("Error removing entity from ad-hoc cache : {0}", e);
+                this.m_tracer.TraceError("Error exists {0} from cache {1}", key, e.Message);
+                //throw new Exception($"Error fetching {key} ({typeof(T).FullName}) from cache", e);
                 return false;
             }
         }
