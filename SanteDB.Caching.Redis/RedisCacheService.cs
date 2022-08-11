@@ -56,6 +56,12 @@ namespace SanteDB.Caching.Redis
     [ServiceProvider("REDIS Data Caching Service", Configuration = typeof(RedisConfigurationSection))]
     public class RedisCacheService : IDataCachingService, IDaemonService
     {
+
+        /// <summary>
+        /// Consistent indicator
+        /// </summary>
+        private struct CacheConsistentIndicator { }
+
         // The field in the REDIS cache for value
         private const string FIELD_VALUE = "value";
 
@@ -312,8 +318,8 @@ namespace SanteDB.Caching.Redis
         private void EnsureCacheConsistency(IdentifiedData data)
         {
             // No data - no consistency needed
-            if (data == null) { return; }
-
+            if (data == null || data.GetAnnotations<CacheConsistentIndicator>().Any()) { return; }
+            data.AddAnnotation(new CacheConsistentIndicator());
 
             switch (data)
             {
@@ -359,7 +365,6 @@ namespace SanteDB.Caching.Redis
                     }
                     break;
             }
-            data.BatchOperation = Core.Model.DataTypes.BatchOperationType.Auto;
         }
 
         /// <inheritdoc/>
