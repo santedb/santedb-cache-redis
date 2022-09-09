@@ -234,7 +234,7 @@ namespace SanteDB.Caching.Redis
                         return;
                     }
 
-                    taggable.RemoveAllTags(o => o.TagKey.StartsWith("$") || o.TagKey != SanteDBConstants.DcdrRefetchTag);
+                    taggable.RemoveAllTags(o => o.TagKey.StartsWith("$") || o.TagKey != SanteDBModelConstants.DcdrRefetchTag);
                 }
 
                 var redisDb = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.CacheDatabaseId);
@@ -403,7 +403,7 @@ namespace SanteDB.Caching.Redis
 
                             if (host is ITaggable ite)
                             {
-                                ite.AddTag(SanteDBConstants.DcdrRefetchTag, "true");
+                                ite.AddTag(SanteDBModelConstants.DcdrRefetchTag, "true");
                             }
                             this.Add(host); // refresh 
 
