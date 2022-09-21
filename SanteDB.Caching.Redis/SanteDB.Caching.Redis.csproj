@@ -85,7 +85,7 @@
     </When>
     <Otherwise>
       <ItemGroup>
-        <PackageReference Include="StackExchange.Redis" Version="2.2.88" />
+        <PackageReference Include="StackExchange.Redis" Version="2.6.66" />
       </ItemGroup>
     </Otherwise>
   </Choose>
