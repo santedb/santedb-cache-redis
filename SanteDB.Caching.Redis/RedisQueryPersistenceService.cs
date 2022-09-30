@@ -50,9 +50,6 @@ namespace SanteDB.Caching.Redis
         // Redis trace source
         private readonly Tracer m_tracer = new Tracer(RedisCacheConstants.TraceSourceName);
 
-        // Connection
-        private ConnectionMultiplexer m_connection;
-
         /// <summary>
         /// Query tag in a hash set
         /// </summary>
@@ -122,9 +119,13 @@ namespace SanteDB.Caching.Redis
                 batch.KeyExpireAsync($"{queryId}.{FIELD_QUERY_TOTAL_RESULTS}", this.m_configuration.TTL);
                 batch.Execute();
                 if (redisConn.KeyExists($"{queryId}.{FIELD_QUERY_RESULT_IDX}"))
+                {
                     return redisConn.ListRange($"{queryId}.{FIELD_QUERY_RESULT_IDX}", offset, offset + count).Select(o => new Guid((byte[])o)).ToArray();
+                }
                 else
+                {
                     return new Guid[0];
+                }
             }
             catch (Exception e)
             {
@@ -171,7 +172,10 @@ namespace SanteDB.Caching.Redis
                 var redisConn = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.QueryDatabaseId);
                 var strTotalCount = redisConn.StringGet($"{queryId}.{FIELD_QUERY_TOTAL_RESULTS}");
                 if (strTotalCount.HasValue)
+                {
                     return BitConverter.ToInt32(strTotalCount, 0);
+                }
+
                 return 0;
             }
             catch (Exception e)
@@ -192,7 +196,9 @@ namespace SanteDB.Caching.Redis
                 batch.ListRightPushAsync($"{queryId}.{FIELD_QUERY_RESULT_IDX}", results.Select(o => (RedisValue)o.ToByteArray()).ToArray());
 
                 if (tag != null)
+                {
                     batch.StringSetAsync($"{queryId}.{FIELD_QUERY_TAG_IDX}", tag.ToString(), expiry: this.m_configuration.TTL);
+                }
 
                 batch.StringSetAsync($"{queryId}.{FIELD_QUERY_TOTAL_RESULTS}", BitConverter.GetBytes(totalResults), expiry: this.m_configuration.TTL);
                 batch.KeyExpireAsync($"{queryId}.{FIELD_QUERY_RESULT_IDX}", this.m_configuration.TTL);
@@ -213,7 +219,9 @@ namespace SanteDB.Caching.Redis
             {
                 var redisConn = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.QueryDatabaseId);
                 if (redisConn.KeyExists($"{queryId}.{FIELD_QUERY_RESULT_IDX}"))
+                {
                     redisConn.StringSet($"{queryId}.{FIELD_QUERY_TAG_IDX}", value?.ToString(), flags: CommandFlags.FireAndForget, expiry: this.m_configuration.TTL);
+                }
             }
             catch (Exception e)
             {

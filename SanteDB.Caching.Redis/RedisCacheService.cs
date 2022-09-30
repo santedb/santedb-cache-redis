@@ -18,7 +18,6 @@
  * User: fyfej
  * Date: 2022-5-30
  */
-using Newtonsoft.Json;
 using SanteDB.Caching.Redis.Configuration;
 using SanteDB.Core;
 using SanteDB.Core.Diagnostics;
@@ -63,6 +62,9 @@ namespace SanteDB.Caching.Redis
         /// </summary>
         private struct CacheConsistentIndicator { }
 
+        // PUB/SUB Topic
+        private const string PUBSUB_TOPIC = "sdb.events";
+
         // The field in the REDIS cache for value
         private const string FIELD_VALUE = "value";
 
@@ -76,13 +78,22 @@ namespace SanteDB.Caching.Redis
         private readonly Tracer m_tracer = new Tracer(RedisCacheConstants.TraceSourceName);
 
         // Configuration
-        private RedisConfigurationSection m_configuration = ApplicationServiceContext.Current.GetService<IConfigurationManager>().GetSection<RedisConfigurationSection>();
+        private readonly RedisConfigurationSection m_configuration;
 
         // Binder
-        private ModelSerializationBinder m_binder = new ModelSerializationBinder();
+        private readonly ModelSerializationBinder m_binder = new ModelSerializationBinder();
 
         // Non cached types - used to ignore cache requests
         private HashSet<Type> m_nonCached = new HashSet<Type>();
+
+        /// <summary>
+        /// DI constructor
+        /// </summary>
+        public RedisCacheService(IConfigurationManager configurationManager)
+        {
+            this.m_configuration = configurationManager.GetSection<RedisConfigurationSection>();
+
+        }
 
         /// <inheritdoc/>
         public bool IsRunning
@@ -179,7 +190,10 @@ namespace SanteDB.Caching.Redis
         /// </summary>
         private IdentifiedData DeserializeObjectFromRedis(RedisValue rvValue)
         {
-            if (rvValue.IsNullOrEmpty) return null;
+            if (rvValue.IsNullOrEmpty)
+            {
+                return null;
+            }
 
             // Find serializer
             using (var sr = new MemoryStream((byte[])rvValue))
@@ -240,10 +254,11 @@ namespace SanteDB.Caching.Redis
                 var redisDb = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.CacheDatabaseId);
                 var cacheKey = data.Key.Value.ToString();
 
-                redisDb.HashSet(cacheKey, new HashEntry[] {
+                var cacheData = new HashEntry[] {
                     new HashEntry(FIELD_VALUE, this.SerializeToRedisValue(data)),
                     new HashEntry(FIELD_LOAD, (int?)data.GetAnnotations<LoadMode>().FirstOrDefault())
-                });
+                };
+                redisDb.HashSet(cacheKey, cacheData);
                 redisDb.KeyExpire(cacheKey, expiry: this.m_configuration.TTL, flags: CommandFlags.FireAndForget);
 
                 //this.EnsureCacheConsistency(new DataCacheEventArgs(data));
@@ -253,9 +268,14 @@ namespace SanteDB.Caching.Redis
 #if DEBUG
                     this.m_tracer.TraceVerbose("HashSet {0} (EXIST: {1}; @: {2})", data, existing, new System.Diagnostics.StackTrace(true).GetFrame(1));
 #endif
-
-                    RedisConnectionManager.Current.Connection.GetSubscriber().Publish("oiz.events", $"POST http://{Environment.MachineName}/cache/{cacheKey}");
-                    //}
+                    if (existing)
+                    {
+                        RedisConnectionManager.Current.Connection.GetSubscriber().Publish(PUBSUB_TOPIC, $"PUT cache://{Environment.MachineName}/{cacheKey}", CommandFlags.FireAndForget);
+                    }
+                    else
+                    {
+                        RedisConnectionManager.Current.Connection.GetSubscriber().Publish(PUBSUB_TOPIC, $"POST cache://{Environment.MachineName}/{cacheKey}", CommandFlags.FireAndForget);
+                    }
                 }
             }
             catch (ObjectDisposedException) { }
@@ -294,7 +314,9 @@ namespace SanteDB.Caching.Redis
             {
                 // We want to add
                 if (RedisConnectionManager.Current.Connection == null)
+                {
                     return null;
+                }
 
                 // Add
                 var cacheKey = key.ToString();
@@ -305,7 +327,8 @@ namespace SanteDB.Caching.Redis
                     var hdata = redisDb.HashGet(cacheKey, FIELD_VALUE);
                     var retVal = this.DeserializeObjectFromRedis(hdata);
                     var loadState = redisDb.HashGet(cacheKey, FIELD_LOAD);
-                    if (loadState.HasValue) {
+                    if (loadState.HasValue)
+                    {
                         retVal.AddAnnotation((LoadMode)(int)loadState);
                     }
                     return retVal;
@@ -316,7 +339,7 @@ namespace SanteDB.Caching.Redis
                 }
 
             }
-            catch(ObjectDisposedException) { return null; }
+            catch (ObjectDisposedException) { return null; }
             catch (Exception e)
             {
                 this.m_tracer.TraceWarning("REDIS CACHE ERROR (FETCHING SKIPPED): {0}", e.Message);
@@ -330,7 +353,9 @@ namespace SanteDB.Caching.Redis
         {
             // We want to add
             if (RedisConnectionManager.Current.Connection == null)
+            {
                 return;
+            }
             // Add
             var existing = this.GetCacheItem(key);
             this.Remove(existing as IdentifiedData);
@@ -339,7 +364,11 @@ namespace SanteDB.Caching.Redis
         /// <inheritdoc/>
         public void Remove(IdentifiedData entry)
         {
-            if (entry == null) return;
+            if (entry == null)
+            {
+                return;
+            }
+
             try
             {
                 var redisDb = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.CacheDatabaseId);
@@ -348,8 +377,8 @@ namespace SanteDB.Caching.Redis
                 this.EnsureCacheConsistency(entry);
                 RedisConnectionManager.Current.Connection.GetSubscriber().Publish("oiz.events", $"DELETE http://{Environment.MachineName}/cache/{entry.Key}");
             }
-            catch(ObjectDisposedException) { }
-            catch(Exception e)
+            catch (ObjectDisposedException) { }
+            catch (Exception e)
             {
                 this.m_tracer.TraceWarning("Error removing from REDIS - skipping - {0}", e.Message);
             }
@@ -373,9 +402,13 @@ namespace SanteDB.Caching.Redis
                     foreach (var itm in bundle.Item)
                     {
                         if (itm.BatchOperation == Core.Model.DataTypes.BatchOperationType.Delete)
+                        {
                             this.Remove(itm);
+                        }
                         else
+                        {
                             this.Add(itm);
+                        }
                     }
                     break;
                 case ISimpleAssociation sa:
@@ -397,7 +430,9 @@ namespace SanteDB.Caching.Redis
 
                                     // Re-add
                                     if (data.BatchOperation != Core.Model.DataTypes.BatchOperationType.Delete)
+                                    {
                                         list.Add(data);
+                                    }
                                 }
                             }
 
@@ -424,36 +459,42 @@ namespace SanteDB.Caching.Redis
 
                 // Look for non-cached types
                 foreach (var itm in typeof(IdentifiedData).Assembly.GetTypes().Where(o => o.GetCustomAttribute<NonCachedAttribute>() != null || o.GetCustomAttribute<XmlRootAttribute>() == null))
+                {
                     this.m_nonCached.Add(itm);
+                }
 
                 // Subscribe to SanteDB events
-                if (this.m_configuration.PublishChanges)
-                    RedisConnectionManager.Current.Subscriber.Subscribe("oiz.events", (channel, message) =>
+                RedisConnectionManager.Current.Subscriber.Subscribe(PUBSUB_TOPIC, (o, e) =>
+                {
+                    try
                     {
-                        this.m_tracer.TraceVerbose("Received event {0} on {1}", message, channel);
-
-                        var messageParts = ((string)message).Split(' ');
-                        var verb = messageParts[0];
-                        var uri = new Uri(messageParts[1]);
-
-                        string resource = uri.AbsolutePath.Replace("cache/", ""),
-                            id = uri.AbsolutePath.Substring(uri.AbsolutePath.LastIndexOf("/") + 1);
-
-                        switch (verb.ToLower())
+                        if (e.HasValue)
                         {
-                            case "post":
-                                //TODO: this.Added?.Invoke(this, new DataCacheEventArgs(this.GetCacheItem(Guid.Parse(id))));
-                                break;
-
-                            case "put":
-                                // TODO: this.Updated?.Invoke(this, new DataCacheEventArgs(this.GetCacheItem(Guid.Parse(id))));
-                                break;
-
-                            case "delete":
-                                this.Removed?.Invoke(this, new DataCacheEventArgs(id));
-                                break;
+                            var notificationData = e.ToString().Split(' ');
+                            var notificationUrl = new Uri(notificationData.Last());
+                            if ("cache".Equals(notificationUrl.Scheme) && Guid.TryParse(notificationUrl.AbsolutePath, out var cacheObject))
+                            {
+                                this.m_tracer.TraceVerbose("Receive Pub/Sub Notification {0}", e);
+                                switch (notificationData[0].ToUpperInvariant())
+                                {
+                                    case "POST":
+                                        this.Added?.Invoke(this, new DataCacheEventArgs(this.GetCacheItem(cacheObject)));
+                                        break;
+                                    case "PUT":
+                                        this.Updated?.Invoke(this, new DataCacheEventArgs(this.GetCacheItem(cacheObject)));
+                                        break;
+                                    case "DELETE":
+                                        this.Removed?.Invoke(this, new DataCacheEventArgs(this.GetCacheItem(cacheObject)));
+                                        break;
+                                }
+                            }
                         }
-                    });
+                    }
+                    catch (Exception ex)
+                    {
+                        this.m_tracer.TraceWarning("Error on event subscription - {0}", ex.Message);
+                    }
+                });
 
                 this.Started?.Invoke(this, EventArgs.Empty);
                 return true;

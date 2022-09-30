@@ -87,9 +87,13 @@ namespace SanteDB.Caching.Redis
                 var db = RedisConnectionManager.Current.Connection?.GetDatabase(RedisCacheConstants.AdhocCacheDatabaseId);
                 var str = db?.StringGet(key);
                 if (!String.IsNullOrEmpty(str))
+                {
                     return JsonConvert.DeserializeObject<T>(str);
+                }
                 else
+                {
                     return default(T);
+                }
             }
             catch (Exception e)
             {

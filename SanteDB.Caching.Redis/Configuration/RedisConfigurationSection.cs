@@ -77,7 +77,13 @@ namespace SanteDB.Caching.Redis.Configuration
         public string TTLXml
         {
             get { return this.TTL.HasValue ? XmlConvert.ToString(this.TTL.Value) : null; }
-            set { if (!string.IsNullOrEmpty(value)) this.TTL = XmlConvert.ToTimeSpan(value); }
+            set
+            {
+                if (!string.IsNullOrEmpty(value))
+                {
+                    this.TTL = XmlConvert.ToTimeSpan(value);
+                }
+            }
         }
 
         /// <summary>
