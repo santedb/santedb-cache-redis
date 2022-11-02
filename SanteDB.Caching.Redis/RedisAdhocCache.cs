@@ -79,8 +79,21 @@ namespace SanteDB.Caching.Redis
             }
         }
 
+
         /// <inheritdoc/>
         public T Get<T>(string key)
+        {
+            if (this.TryGet<T>(key, out var t)) {
+                return t;
+            }
+            else
+            {
+                return default(T);
+            }
+        }
+
+        /// <inheritdoc/>
+        public bool TryGet<T>(string key, out T value)
         {
             try
             {
@@ -88,18 +101,20 @@ namespace SanteDB.Caching.Redis
                 var str = db?.StringGet(key);
                 if (!String.IsNullOrEmpty(str))
                 {
-                    return JsonConvert.DeserializeObject<T>(str);
+                    value = JsonConvert.DeserializeObject<T>(str);
                 }
                 else
                 {
-                    return default(T);
+                    value = default(T);
                 }
+                return db?.KeyExists(key) == true;
             }
             catch (Exception e)
             {
                 this.m_tracer.TraceError("Error fetch {0} from cache {1}", key, e.Message);
                 //throw new Exception($"Error fetching {key} ({typeof(T).FullName}) from cache", e);
-                return default(T);
+                value = default(T);
+                return false;
             }
         }
 
