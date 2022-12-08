@@ -180,5 +180,24 @@ namespace SanteDB.Caching.Redis
                 return false;
             }
         }
+
+        /// <summary>
+        /// Remove all keys with pattern matching <paramref name="pattern"/>
+        /// </summary>
+        public void RemoveAll(string pattern)
+        {
+            try
+            {
+                var db = RedisConnectionManager.Current.Connection?.GetDatabase(RedisCacheConstants.AdhocCacheDatabaseId);
+                var server = RedisConnectionManager.Current.Connection?.GetServers()[0];
+                foreach (var key in server.Keys(database: RedisCacheConstants.AdhocCacheDatabaseId, pattern: pattern))
+                {
+                    db.KeyDelete(key);
+                }
+            }
+            catch (Exception e)
+            {
+            }
+        }
     }
 }
