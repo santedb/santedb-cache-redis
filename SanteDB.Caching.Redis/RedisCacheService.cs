@@ -18,6 +18,7 @@
  * User: fyfej
  * Date: 2022-5-30
  */
+using Newtonsoft.Json;
 using SanteDB.Caching.Redis.Configuration;
 using SanteDB.Core;
 using SanteDB.Core.Diagnostics;
@@ -56,6 +57,16 @@ namespace SanteDB.Caching.Redis
     [ExcludeFromCodeCoverage] // Unit testing on REDIS is not possible in unit tests
     public class RedisCacheService : IDataCachingService, IDaemonService
     {
+
+        private readonly JsonSerializer m_serializer = new JsonSerializer()
+        {
+            //SerializationBinder = new ModelSerializationBinder(),
+            DateFormatHandling = DateFormatHandling.IsoDateFormat,
+            Formatting = Formatting.None,
+            NullValueHandling = NullValueHandling.Include,
+            TypeNameHandling = TypeNameHandling.All,
+            TypeNameAssemblyFormatHandling = TypeNameAssemblyFormatHandling.Full
+        };
 
         /// <summary>
         /// Consistent indicator
@@ -128,7 +139,7 @@ namespace SanteDB.Caching.Redis
         /// <summary>
         /// Serialize to stream
         /// </summary>
-        private void SerializeToStream(IdentifiedData data, Stream targetStream)
+        private void SerializeXmlToStream(IdentifiedData data, Stream targetStream)
         {
             XmlSerializer xsz = XmlModelSerializerFactory.Current.CreateSerializer(data.GetType());
             var objectTypeData = System.Text.Encoding.UTF8.GetBytes(data.GetType().AssemblyQualifiedName);
@@ -146,22 +157,39 @@ namespace SanteDB.Caching.Redis
         {
             data.BatchOperation = Core.Model.DataTypes.BatchOperationType.Auto;
 
-            using (var ms = new MemoryStream())
+            switch (this.m_configuration.Format)
             {
-                if (this.m_configuration.Compress)
-                {
-                    using (var gzs = new GZipStream(ms, CompressionLevel.Fastest))
-                    {
-                        this.SerializeToStream(data, gzs);
-                    }
-                }
-                else
-                {
-                    this.SerializeToStream(data, ms);
-                }
+                case RedisFormat.Xml:
 
-                return ms.ToArray();
+                    using (var ms = new MemoryStream())
+                    {
+                        if (this.m_configuration.Compress)
+                        {
+                            using (var gzs = new GZipStream(ms, CompressionLevel.Fastest))
+                            {
+                                this.SerializeXmlToStream(data, gzs);
+                            }
+                        }
+                        else
+                        {
+                            this.SerializeXmlToStream(data, ms);
+                        }
+
+                        return ms.ToArray();
+                    }
+                case RedisFormat.Json:
+                    using (var sw = new StringWriter())
+                    {
+                        using (var jw = new JsonTextWriter(sw))
+                        {
+                            this.m_serializer.Serialize(jw, data);
+                        }
+                        return sw.ToString();
+                    }
+                default:
+                    throw new NotSupportedException(this.m_configuration.Format.ToString());
             }
+
         }
 
         /// <summary>
@@ -195,21 +223,36 @@ namespace SanteDB.Caching.Redis
                 return null;
             }
 
-            // Find serializer
-            using (var sr = new MemoryStream((byte[])rvValue))
+            switch (this.m_configuration.Format)
             {
-                if (this.m_configuration.Compress)
-                {
-                    using (var gzs = new GZipStream(sr, CompressionMode.Decompress))
+                case RedisFormat.Xml:
+                    // Find serializer
+                    using (var sr = new MemoryStream((byte[])rvValue))
                     {
-                        return this.DeserializeObjectFromStream(gzs);
+                        if (this.m_configuration.Compress)
+                        {
+                            using (var gzs = new GZipStream(sr, CompressionMode.Decompress))
+                            {
+                                return this.DeserializeObjectFromStream(gzs);
+                            }
+                        }
+                        else
+                        {
+                            return this.DeserializeObjectFromStream(sr);
+                        }
                     }
-                }
-                else
-                {
-                    return this.DeserializeObjectFromStream(sr);
-                }
+                case RedisFormat.Json:
+                    using (var sr = new StringReader(rvValue))
+                    {
+                        using (var jr = new JsonTextReader(sr))
+                        {
+                            return this.m_serializer.Deserialize(jr) as IdentifiedData;
+                        }
+                    }
+                default:
+                    throw new NotSupportedException(this.m_configuration.Format.ToString());
             }
+
         }
 
         /// <summary>
@@ -258,7 +301,7 @@ namespace SanteDB.Caching.Redis
                     new HashEntry(FIELD_VALUE, this.SerializeToRedisValue(data)),
                     new HashEntry(FIELD_LOAD, (int?)data.GetAnnotations<LoadMode>().FirstOrDefault())
                 };
-                redisDb.HashSet(cacheKey, cacheData);
+                redisDb.HashSet(cacheKey, cacheData, flags: CommandFlags.FireAndForget);
                 redisDb.KeyExpire(cacheKey, expiry: this.m_configuration.TTL, flags: CommandFlags.FireAndForget);
 
                 //this.EnsureCacheConsistency(new DataCacheEventArgs(data));
@@ -322,9 +365,9 @@ namespace SanteDB.Caching.Redis
                 var cacheKey = key.ToString();
 
                 var redisDb = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.CacheDatabaseId);
-                if (redisDb.KeyExpire(cacheKey, this.m_configuration.TTL))
+                var hdata = redisDb.HashGet(cacheKey, FIELD_VALUE);
+                if (!hdata.IsNullOrEmpty)
                 {
-                    var hdata = redisDb.HashGet(cacheKey, FIELD_VALUE);
                     var retVal = this.DeserializeObjectFromRedis(hdata);
                     var loadState = redisDb.HashGet(cacheKey, FIELD_LOAD);
                     if (loadState.HasValue)
@@ -337,7 +380,6 @@ namespace SanteDB.Caching.Redis
                 {
                     return null;
                 }
-
             }
             catch (ObjectDisposedException) { return null; }
             catch (Exception e)

@@ -43,6 +43,12 @@ namespace SanteDB.Caching.Redis.Configuration
         }
 
         /// <summary>
+        /// Gets or sets whether the data being sent to REDIS should be in JSON
+        /// </summary>
+        [XmlAttribute("format"), DisplayName("Value Format"), Description("Specifies the type and format of the values in the REDIS cache")]
+        public RedisFormat Format { get; set; }
+
+        /// <summary>
         /// Gets or sets whether data being sent to the REDIS cache should be compressed
         /// </summary>
         /// <remarks>This is typically set for remote REDIS servers where bandwidth between the server is limited and the time of
