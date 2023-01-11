@@ -37,6 +37,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
+using System.Xml;
 using System.Xml.Serialization;
 
 namespace SanteDB.Caching.Redis
@@ -62,7 +63,7 @@ namespace SanteDB.Caching.Redis
         {
             //SerializationBinder = new ModelSerializationBinder(),
             DateFormatHandling = DateFormatHandling.IsoDateFormat,
-            Formatting = Formatting.None,
+            Formatting = Newtonsoft.Json.Formatting.None,
             NullValueHandling = NullValueHandling.Include,
             TypeNameHandling = TypeNameHandling.All,
             TypeNameAssemblyFormatHandling = TypeNameAssemblyFormatHandling.Full
@@ -147,7 +148,10 @@ namespace SanteDB.Caching.Redis
 
             targetStream.Write(objectTypeLength, 0, objectTypeLength.Length);
             targetStream.Write(objectTypeData, 0, objectTypeData.Length);
-            xsz.Serialize(targetStream, data);
+            using (var xs = XmlWriter.Create(targetStream, new XmlWriterSettings() { Indent = false, Encoding = System.Text.Encoding.UTF8 }))
+            {
+                xsz.Serialize(targetStream, data);
+            }
         }
 
         /// <summary>
