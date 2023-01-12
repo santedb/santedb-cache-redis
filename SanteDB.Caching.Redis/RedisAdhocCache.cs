@@ -26,6 +26,7 @@ using SanteDB.Core.Services;
 using StackExchange.Redis;
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.RegularExpressions;
 
 namespace SanteDB.Caching.Redis
 {
@@ -188,11 +189,15 @@ namespace SanteDB.Caching.Redis
         {
             try
             {
+                var regex = new Regex(pattern, RegexOptions.Compiled);
                 var db = RedisConnectionManager.Current.Connection?.GetDatabase(RedisCacheConstants.AdhocCacheDatabaseId);
                 var server = RedisConnectionManager.Current.Connection?.GetServers()[0];
-                foreach (var key in server.Keys(database: RedisCacheConstants.AdhocCacheDatabaseId, pattern: pattern))
+                foreach(var key in server.Keys(database: RedisCacheConstants.AdhocCacheDatabaseId))
                 {
-                    db.KeyDelete(key);
+                    if (regex.IsMatch(key))
+                    {
+                        db.KeyDelete(key);
+                    }
                 }
             }
             catch (Exception e)
