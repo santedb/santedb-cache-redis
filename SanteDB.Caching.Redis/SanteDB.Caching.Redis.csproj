@@ -4,7 +4,7 @@
     <TargetFrameworks>netstandard2.0</TargetFrameworks>
   </PropertyGroup>
   <PropertyGroup Condition="'$(VersionNumber)' == ''">
-    <VersionNumber>2.1.0-debug</VersionNumber>
+    <VersionNumber>3.0-debug</VersionNumber>
   </PropertyGroup>
   <PropertyGroup>
     <PackageId>SanteDB.Caching.Redis</PackageId>
@@ -85,7 +85,7 @@
     </When>
     <Otherwise>
       <ItemGroup>
-        <PackageReference Include="StackExchange.Redis" Version="2.2.88" />
+        <PackageReference Include="StackExchange.Redis" Version="2.6.70" />
       </ItemGroup>
     </Otherwise>
   </Choose>

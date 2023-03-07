@@ -1,24 +1,23 @@
 ﻿/*
- * Copyright (C) 2021 - 2021, SanteSuite Inc. and the SanteSuite Contributors (See NOTICE.md for full copyright notices)
+ * Copyright (C) 2021 - 2022, SanteSuite Inc. and the SanteSuite Contributors (See NOTICE.md for full copyright notices)
  * Copyright (C) 2019 - 2021, Fyfe Software Inc. and the SanteSuite Contributors
  * Portions Copyright (C) 2015-2018 Mohawk College of Applied Arts and Technology
- *
- * Licensed under the Apache License, Version 2.0 (the "License"); you
- * may not use this file except in compliance with the License. You may
- * obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License"); you 
+ * may not use this file except in compliance with the License. You may 
+ * obtain a copy of the License at 
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0 
+ * 
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
- * License for the specific language governing permissions and limitations under
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the 
+ * License for the specific language governing permissions and limitations under 
  * the License.
- *
+ * 
  * User: fyfej
- * Date: 2021-8-5
+ * Date: 2022-5-30
  */
-
 using SanteDB.Caching.Redis.Configuration;
 using SanteDB.Core;
 using SanteDB.Core.Diagnostics;
@@ -26,6 +25,7 @@ using SanteDB.Core.Services;
 using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 namespace SanteDB.Caching.Redis
@@ -38,6 +38,7 @@ namespace SanteDB.Caching.Redis
     /// is stored in database 2 of the REDIS server.</para>
     /// </remarks>
     [ServiceProvider("REDIS Query Persistence Service")]
+    [ExcludeFromCodeCoverage] // Unit testing on REDIS is not possible in unit tests
     public class RedisQueryPersistenceService : IQueryPersistenceService, IDaemonService
     {
         /// <inheritdoc/>
@@ -47,10 +48,7 @@ namespace SanteDB.Caching.Redis
         public bool IsRunning => this.m_configuration != null;
 
         // Redis trace source
-        private Tracer m_tracer = new Tracer(RedisCacheConstants.TraceSourceName);
-
-        // Connection
-        private ConnectionMultiplexer m_connection;
+        private readonly Tracer m_tracer = new Tracer(RedisCacheConstants.TraceSourceName);
 
         /// <summary>
         /// Query tag in a hash set
@@ -121,9 +119,13 @@ namespace SanteDB.Caching.Redis
                 batch.KeyExpireAsync($"{queryId}.{FIELD_QUERY_TOTAL_RESULTS}", this.m_configuration.TTL);
                 batch.Execute();
                 if (redisConn.KeyExists($"{queryId}.{FIELD_QUERY_RESULT_IDX}"))
+                {
                     return redisConn.ListRange($"{queryId}.{FIELD_QUERY_RESULT_IDX}", offset, offset + count).Select(o => new Guid((byte[])o)).ToArray();
+                }
                 else
+                {
                     return new Guid[0];
+                }
             }
             catch (Exception e)
             {
@@ -170,7 +172,10 @@ namespace SanteDB.Caching.Redis
                 var redisConn = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.QueryDatabaseId);
                 var strTotalCount = redisConn.StringGet($"{queryId}.{FIELD_QUERY_TOTAL_RESULTS}");
                 if (strTotalCount.HasValue)
+                {
                     return BitConverter.ToInt32(strTotalCount, 0);
+                }
+
                 return 0;
             }
             catch (Exception e)
@@ -191,7 +196,9 @@ namespace SanteDB.Caching.Redis
                 batch.ListRightPushAsync($"{queryId}.{FIELD_QUERY_RESULT_IDX}", results.Select(o => (RedisValue)o.ToByteArray()).ToArray());
 
                 if (tag != null)
+                {
                     batch.StringSetAsync($"{queryId}.{FIELD_QUERY_TAG_IDX}", tag.ToString(), expiry: this.m_configuration.TTL);
+                }
 
                 batch.StringSetAsync($"{queryId}.{FIELD_QUERY_TOTAL_RESULTS}", BitConverter.GetBytes(totalResults), expiry: this.m_configuration.TTL);
                 batch.KeyExpireAsync($"{queryId}.{FIELD_QUERY_RESULT_IDX}", this.m_configuration.TTL);
@@ -212,7 +219,9 @@ namespace SanteDB.Caching.Redis
             {
                 var redisConn = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.QueryDatabaseId);
                 if (redisConn.KeyExists($"{queryId}.{FIELD_QUERY_RESULT_IDX}"))
+                {
                     redisConn.StringSet($"{queryId}.{FIELD_QUERY_TAG_IDX}", value?.ToString(), flags: CommandFlags.FireAndForget, expiry: this.m_configuration.TTL);
+                }
             }
             catch (Exception e)
             {
@@ -250,6 +259,25 @@ namespace SanteDB.Caching.Redis
             RedisConnectionManager.Current.Dispose();
             this.Stopped?.Invoke(this, EventArgs.Empty);
             return true;
+        }
+
+        /// <summary>
+        /// Abort the query set <paramref name="queryId"/>
+        /// </summary>
+        public void AbortQuerySet(Guid queryId)
+        {
+            try
+            {
+                var redisConn = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.QueryDatabaseId);
+                redisConn.KeyDelete($"{queryId}.{FIELD_QUERY_TAG_IDX}", flags: CommandFlags.FireAndForget);
+                redisConn.KeyDelete($"{queryId}.{FIELD_QUERY_RESULT_IDX}", flags: CommandFlags.FireAndForget);
+                redisConn.KeyDelete($"{queryId}.{FIELD_QUERY_TOTAL_RESULTS}", flags: CommandFlags.FireAndForget);
+            }
+            catch (Exception e)
+            {
+                this.m_tracer.TraceError("Error setting tags in REDIS: {0}", e);
+                throw new Exception("Error setting query tag in REDIS", e);
+            }
         }
     }
 }

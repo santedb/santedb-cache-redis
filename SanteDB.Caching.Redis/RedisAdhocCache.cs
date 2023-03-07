@@ -1,24 +1,23 @@
 ﻿/*
- * Copyright (C) 2021 - 2021, SanteSuite Inc. and the SanteSuite Contributors (See NOTICE.md for full copyright notices)
+ * Copyright (C) 2021 - 2022, SanteSuite Inc. and the SanteSuite Contributors (See NOTICE.md for full copyright notices)
  * Copyright (C) 2019 - 2021, Fyfe Software Inc. and the SanteSuite Contributors
  * Portions Copyright (C) 2015-2018 Mohawk College of Applied Arts and Technology
- *
- * Licensed under the Apache License, Version 2.0 (the "License"); you
- * may not use this file except in compliance with the License. You may
- * obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License"); you 
+ * may not use this file except in compliance with the License. You may 
+ * obtain a copy of the License at 
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0 
+ * 
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
- * License for the specific language governing permissions and limitations under
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the 
+ * License for the specific language governing permissions and limitations under 
  * the License.
- *
+ * 
  * User: fyfej
- * Date: 2021-8-5
+ * Date: 2022-5-30
  */
-
 using Newtonsoft.Json;
 using SanteDB.Caching.Redis.Configuration;
 using SanteDB.Core;
@@ -26,6 +25,8 @@ using SanteDB.Core.Diagnostics;
 using SanteDB.Core.Services;
 using StackExchange.Redis;
 using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Text.RegularExpressions;
 
 namespace SanteDB.Caching.Redis
 {
@@ -37,6 +38,7 @@ namespace SanteDB.Caching.Redis
     /// compresses (optional) the data and stores it in REDIS as a simple string</para>
     /// <para>The data is stored in database 3 of the REDIS server</para>
     /// </remarks>
+    [ExcludeFromCodeCoverage] // Unit testing on REDIS is not possible in unit tests
     public class RedisAdhocCache : IAdhocCacheService, IDaemonService
     {
         /// <inheritdoc/>
@@ -46,7 +48,7 @@ namespace SanteDB.Caching.Redis
         public string ServiceName => "REDIS Ad-Hoc Caching Service";
 
         // Redis trace source
-        private Tracer m_tracer = new Tracer(RedisCacheConstants.TraceSourceName);
+        private readonly Tracer m_tracer = new Tracer(RedisCacheConstants.TraceSourceName);
 
         // Configuration
         private RedisConfigurationSection m_configuration = ApplicationServiceContext.Current.GetService<IConfigurationManager>().GetSection<RedisConfigurationSection>();
@@ -78,23 +80,42 @@ namespace SanteDB.Caching.Redis
             }
         }
 
+
         /// <inheritdoc/>
         public T Get<T>(string key)
+        {
+            if (this.TryGet<T>(key, out var t)) {
+                return t;
+            }
+            else
+            {
+                return default(T);
+            }
+        }
+
+        /// <inheritdoc/>
+        public bool TryGet<T>(string key, out T value)
         {
             try
             {
                 var db = RedisConnectionManager.Current.Connection?.GetDatabase(RedisCacheConstants.AdhocCacheDatabaseId);
                 var str = db?.StringGet(key);
                 if (!String.IsNullOrEmpty(str))
-                    return JsonConvert.DeserializeObject<T>(str);
+                {
+                    value = JsonConvert.DeserializeObject<T>(str);
+                }
                 else
-                    return default(T);
+                {
+                    value = default(T);
+                }
+                return db?.KeyExists(key) == true;
             }
             catch (Exception e)
             {
                 this.m_tracer.TraceError("Error fetch {0} from cache {1}", key, e.Message);
                 //throw new Exception($"Error fetching {key} ({typeof(T).FullName}) from cache", e);
-                return default(T);
+                value = default(T);
+                return false;
             }
         }
 
@@ -158,6 +179,29 @@ namespace SanteDB.Caching.Redis
                 this.m_tracer.TraceError("Error exists {0} from cache {1}", key, e.Message);
                 //throw new Exception($"Error fetching {key} ({typeof(T).FullName}) from cache", e);
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// Remove all keys with pattern matching <paramref name="pattern"/>
+        /// </summary>
+        public void RemoveAll(string pattern)
+        {
+            try
+            {
+                var regex = new Regex(pattern, RegexOptions.Compiled);
+                var db = RedisConnectionManager.Current.Connection?.GetDatabase(RedisCacheConstants.AdhocCacheDatabaseId);
+                var server = RedisConnectionManager.Current.Connection?.GetServers()[0];
+                foreach(var key in server.Keys(database: RedisCacheConstants.AdhocCacheDatabaseId))
+                {
+                    if (regex.IsMatch(key))
+                    {
+                        db.KeyDelete(key);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
             }
         }
     }
