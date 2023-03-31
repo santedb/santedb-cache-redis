@@ -200,7 +200,7 @@ namespace SanteDB.Caching.Redis
                     }
                 }
             }
-            catch (Exception e)
+            catch (Exception)
             {
             }
         }
