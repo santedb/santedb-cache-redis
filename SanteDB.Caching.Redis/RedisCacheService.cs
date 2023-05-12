@@ -25,6 +25,7 @@ using SanteDB.Core.Diagnostics;
 using SanteDB.Core.Model;
 using SanteDB.Core.Model.Attributes;
 using SanteDB.Core.Model.Collection;
+using SanteDB.Core.Model.Constants;
 using SanteDB.Core.Model.Interfaces;
 using SanteDB.Core.Model.Serialization;
 using SanteDB.Core.Services;
@@ -290,12 +291,12 @@ namespace SanteDB.Caching.Redis
                 {
                     // TODO: Put this as a constant
                     // Don't cache generated data
-                    if (taggable.GetTag("$generated") == "true")
+                    if (taggable.GetTag(SystemTagNames.GeneratedDataTag) == "true")
                     {
                         return;
                     }
 
-                    taggable.RemoveAllTags(o => o.TagKey.StartsWith("$") || o.TagKey != SanteDBModelConstants.DcdrRefetchTag);
+                    taggable.RemoveAllTags(o => o.TagKey.StartsWith("$") || o.TagKey != SystemTagNames.DcdrRefetchTag);
                 }
 
                 var redisDb = RedisConnectionManager.Current.Connection.GetDatabase(RedisCacheConstants.CacheDatabaseId);
@@ -484,7 +485,7 @@ namespace SanteDB.Caching.Redis
 
                             if (host is ITaggable ite)
                             {
-                                ite.AddTag(SanteDBModelConstants.DcdrRefetchTag, "true");
+                                ite.AddTag(SystemTagNames.DcdrRefetchTag, "true");
                             }
                             this.Add(host); // refresh 
 
