@@ -84,7 +84,8 @@ namespace SanteDB.Caching.Redis
         /// <inheritdoc/>
         public T Get<T>(string key)
         {
-            if (this.TryGet<T>(key, out var t)) {
+            if (this.TryGet<T>(key, out var t))
+            {
                 return t;
             }
             else
@@ -192,7 +193,7 @@ namespace SanteDB.Caching.Redis
                 var regex = new Regex(pattern, RegexOptions.Compiled);
                 var db = RedisConnectionManager.Current.Connection?.GetDatabase(RedisCacheConstants.AdhocCacheDatabaseId);
                 var server = RedisConnectionManager.Current.Connection?.GetServers()[0];
-                foreach(var key in server.Keys(database: RedisCacheConstants.AdhocCacheDatabaseId))
+                foreach (var key in server.Keys(database: RedisCacheConstants.AdhocCacheDatabaseId))
                 {
                     if (regex.IsMatch(key))
                     {
