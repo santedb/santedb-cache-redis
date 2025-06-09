@@ -1,119 +1,110 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <TargetFrameworks>netstandard2.0</TargetFrameworks>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(VersionNumber)' == ''">
-    <VersionNumber>3.0-debug</VersionNumber>
-  </PropertyGroup>
-  <PropertyGroup>
-    <PackageId>SanteDB.Caching.Redis</PackageId>
-    <Title>SanteDB REDIS Cache</Title>
-    <Version>$(VersionNumber)</Version>
-    <Description>Provides an implementation of the IDataCachingService which stores objects REDIS cache.</Description>
-    <Authors>SanteSuite Contributors</Authors>
-    <PackageTags>SanteDB</PackageTags>
-    <RepositoryUrl>https://github.com/santedb/santedb-cache-redis</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-    <IncludeSymbols>true</IncludeSymbols>
-    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
-	    <Product>SanteDB</Product>
-    <Copyright>Copyright (C) 2015-2025 SanteSuite Contributors (See: NOTICES)</Copyright>
-    <Company>SanteSuite Contributors</Company>
-    <PackageIconUrl>http://santesuite.org/assets/img/logo.png</PackageIconUrl>
-    <PackageProjectUrl>http://santesuite.org</PackageProjectUrl>
-  </PropertyGroup> 
-   
-  <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{86672094-25CC-4CD5-B085-240E50EC4A5E}</ProjectGuid>
-    <OutputType>Library</OutputType>
-    <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>SanteDB.Caching.Redis</RootNamespace>
-    <AssemblyName>SanteDB.Caching.Redis</AssemblyName>
-    <FileAlignment>512</FileAlignment>
-    <TargetFrameworkProfile />
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>full</DebugType>
-    <Optimize>false</Optimize>
-    <OutputPath>..\bin\Debug\</OutputPath>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>
-    <OutputPath>..\bin\Release\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-  </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.IO.Compression" />
-    <Reference Include="System.Xml.Linq" />
-    <Reference Include="System.Data.DataSetExtensions" />
-    <Reference Include="Microsoft.CSharp" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Net.Http" />
-    <Reference Include="System.Xml" />
-  </ItemGroup>
-  
-  <ItemGroup>
-    <None Include="..\SanteDB.licenseheader">
-      <Link>SanteDB.licenseheader</Link>
-    </None>
-    <None Include="app.config" />
-  </ItemGroup>
-  
-  <ItemGroup>
-    <Folder Include="Properties\" />
-  </ItemGroup>
-  <Choose>
-    <When Condition="$(SolutionName.Contains('-linux'))">
-      <ItemGroup>
-        <PackageReference Include="StackExchange.Redis.Mono" Version="1.0.0" />
-      </ItemGroup>
-    </When>
-    <Otherwise>
-      <ItemGroup>
-        <PackageReference Include="StackExchange.Redis" Version="2.8.24" />
-      </ItemGroup>
-    </Otherwise>
-  </Choose>
-  <Choose>
-    <When Condition="$(SolutionName.Contains('-ext'))">
-      <ItemGroup>
-        <ProjectReference Include="..\..\santedb-api\SanteDB.Core.Api\SanteDB.Core.Api.csproj">
-          <Project>{3A45F695-47A2-464C-ACE6-BDABBFA39FBC}</Project>
-          <Name>SanteDB.Core.Api</Name>
-        </ProjectReference>
-        <ProjectReference Include="..\..\santedb-model\SanteDB.Core.Model\SanteDB.Core.Model.csproj">
-          <Project>{F1A82A4F-4A57-47D7-AE76-444C8A4FF54A}</Project>
-          <Name>SanteDB.Core.Model</Name>
-        </ProjectReference>
-        <ProjectReference Include="..\..\santedb-docker\SanteDB.Docker.Core\SanteDB.Docker.Core.csproj" />
+	<PropertyGroup>
+		<TargetFrameworks>netstandard2.0</TargetFrameworks>
+	</PropertyGroup>
+	<PropertyGroup Condition="'$(VersionNumber)' == ''">
+		<VersionNumber>3.0-debug</VersionNumber>
+	</PropertyGroup>
+	<PropertyGroup>
+		<PackageId>SanteDB.Caching.Redis</PackageId>
+		<Title>SanteDB REDIS Cache</Title>
+		<Version>$(VersionNumber)</Version>
+		<Description>Provides an implementation of the IDataCachingService which stores objects REDIS cache.</Description>
+		<Authors>SanteSuite Contributors</Authors>
+		<PackageTags>SanteDB</PackageTags>
+		<RepositoryUrl>https://github.com/santedb/santedb-cache-redis</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+		<IncludeSymbols>true</IncludeSymbols>
+		<AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+		<Product>SanteDB</Product>
+		<Copyright>Copyright (C) 2015-2025 SanteSuite Contributors (See: NOTICES)</Copyright>
+		<Company>SanteSuite Contributors</Company>
+		<PackageIconUrl>http://santesuite.org/assets/img/logo.png</PackageIconUrl>
+		<PackageProjectUrl>http://santesuite.org</PackageProjectUrl>
+	</PropertyGroup>
 
-      </ItemGroup>
-    </When>
-    <Otherwise>
-      <ItemGroup>
-        <PackageReference Include="SanteDB.Core.Api" Version="$(VersionNumber)" />
-        <PackageReference Include="SanteDB.Core.Model" Version="$(VersionNumber)" />
-        <PackageReference Include="SanteDB.Docker.Core" Version="$(VersionNumber)" />
-      </ItemGroup>
-    </Otherwise>
-  </Choose>
-  
-  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+	<PropertyGroup>
+		<Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+		<Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+		<ProjectGuid>{86672094-25CC-4CD5-B085-240E50EC4A5E}</ProjectGuid>
+		<OutputType>Library</OutputType>
+		<AppDesignerFolder>Properties</AppDesignerFolder>
+		<RootNamespace>SanteDB.Caching.Redis</RootNamespace>
+		<AssemblyName>SanteDB.Caching.Redis</AssemblyName>
+		<FileAlignment>512</FileAlignment>
+		<TargetFrameworkProfile />
+	</PropertyGroup>
+	<PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+		<DebugSymbols>true</DebugSymbols>
+		<DebugType>full</DebugType>
+		<Optimize>false</Optimize>
+		<OutputPath>..\bin\Debug\</OutputPath>
+		<DefineConstants>DEBUG;TRACE</DefineConstants>
+		<ErrorReport>prompt</ErrorReport>
+		<WarningLevel>4</WarningLevel>
+	</PropertyGroup>
+	<PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+		<DebugType>pdbonly</DebugType>
+		<Optimize>true</Optimize>
+		<OutputPath>..\bin\Release\</OutputPath>
+		<DefineConstants>TRACE</DefineConstants>
+		<ErrorReport>prompt</ErrorReport>
+		<WarningLevel>4</WarningLevel>
+	</PropertyGroup>
+	<ItemGroup>
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+		<Reference Include="System" />
+		<Reference Include="System.Core" />
+		<Reference Include="System.IO.Compression" />
+		<Reference Include="System.Xml.Linq" />
+		<Reference Include="System.Data.DataSetExtensions" />
+		<Reference Include="Microsoft.CSharp" />
+		<Reference Include="System.Data" />
+		<Reference Include="System.Net.Http" />
+		<Reference Include="System.Xml" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="..\SanteDB.licenseheader">
+			<Link>SanteDB.licenseheader</Link>
+		</None>
+		<None Include="app.config" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Folder Include="Properties\" />
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="StackExchange.Redis" Version="2.8.37" />
+	</ItemGroup>
+	<Choose>
+		<When Condition="$(SolutionName.Contains('-ext'))">
+			<ItemGroup>
+				<ProjectReference Include="..\..\santedb-api\SanteDB.Core.Api\SanteDB.Core.Api.csproj">
+					<Project>{3A45F695-47A2-464C-ACE6-BDABBFA39FBC}</Project>
+					<Name>SanteDB.Core.Api</Name>
+				</ProjectReference>
+				<ProjectReference Include="..\..\santedb-model\SanteDB.Core.Model\SanteDB.Core.Model.csproj">
+					<Project>{F1A82A4F-4A57-47D7-AE76-444C8A4FF54A}</Project>
+					<Name>SanteDB.Core.Model</Name>
+				</ProjectReference>
+				<ProjectReference Include="..\..\santedb-docker\SanteDB.Docker.Core\SanteDB.Docker.Core.csproj" />
+
+			</ItemGroup>
+		</When>
+		<Otherwise>
+			<ItemGroup>
+				<PackageReference Include="SanteDB.Core.Api" Version="$(VersionNumber)" />
+				<PackageReference Include="SanteDB.Core.Model" Version="$(VersionNumber)" />
+				<PackageReference Include="SanteDB.Docker.Core" Version="$(VersionNumber)" />
+			</ItemGroup>
+		</Otherwise>
+	</Choose>
+
+	<!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
   <Target Name="BeforeBuild">
   </Target>
