@@ -280,6 +280,10 @@ namespace SanteDB.Caching.Redis
                 {
                     return;
                 }
+                else if (data is IHasPolicies ihp && ihp.Policies?.Any() == true)
+                {
+                    return;
+                }
                 else if (data.GetType().GetCustomAttribute<NonCachedAttribute>() != null)
                 {
                     this.m_nonCached.Add(data.GetType());
