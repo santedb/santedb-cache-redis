@@ -38,19 +38,20 @@
 		
 	</ItemGroup>
 	<Choose>
-		<When Condition="$(SolutionName.Contains('-ext'))">
-			<ItemGroup>
-				<ProjectReference Include="..\..\santedb-api\SanteDB.Core.Api\SanteDB.Core.Api.csproj" />
-				<ProjectReference Include="..\..\santedb-model\SanteDB.Core.Model\SanteDB.Core.Model.csproj" />
-				<ProjectReference Include="..\..\santedb-docker\SanteDB.Docker.Core\SanteDB.Docker.Core.csproj" />
-			</ItemGroup>
-		</When>
-		<Otherwise>
+		<When Condition="$(SolutionName.Contains('-nuget'))">
 			<ItemGroup>
 				<PackageReference Include="SanteDB.Core.Api" Version="$(VersionNumber)" />
 				<PackageReference Include="SanteDB.Core.Model" Version="$(VersionNumber)" />
 				<PackageReference Include="SanteDB.Docker.Core" Version="$(VersionNumber)" />
 			</ItemGroup>
+		</When>
+		<Otherwise>
+			<ItemGroup>
+				<ProjectReference Include="..\..\santedb-api\SanteDB.Core.Api\SanteDB.Core.Api.csproj" />
+				<ProjectReference Include="..\..\santedb-model\SanteDB.Core.Model\SanteDB.Core.Model.csproj" />
+				<ProjectReference Include="..\..\santedb-docker\SanteDB.Docker.Core\SanteDB.Docker.Core.csproj" />
+			</ItemGroup>
+			
 		</Otherwise>
 	</Choose>
 </Project>
